@@ -1,0 +1,44 @@
+# https://pre-commit.com/
+repos:
+  # Хук, чтобы я не вкоммичивал строки, в которых `nocheckin` - временный маркер,
+  # который я ставлю во время разработки, чтобы я не забыл и обязательно обратил на что-то внимание.
+  - repo: https://github.com/pre-commit/pygrep-hooks
+    rev: v1.10.0
+    hooks:
+      - id: python-no-eval
+        entry: 'nocheckin'
+        language: pygrep
+        files: ^(?!.pre-commit-config).*.(h|c|hpp|cpp|json|jsonc|yaml|yml|txt|py|md|toml|cfg)$
+        types: []
+
+  - repo: local
+    hooks:
+      - id: lint
+        name: lint
+        entry: poetry run ruff check src
+        pass_filenames: false
+        types: [python]
+        language: system
+        fail_fast: true
+
+      - id: format
+        name: format
+        entry: poetry run black src && poetry run isort src
+        pass_filenames: false
+        types: [python]
+        language: system
+
+      - id: test
+        name: test
+        entry: poetry run pytest
+        pass_filenames: false
+        types: [python]
+        language: system
+
+  # Не устанавливаю poetry в docker. Вместо этого - экспортирую requirements.txt
+  # с хешами, без инструментов разработки вроде линтеров и форматтеров.
+  - repo: https://github.com/python-poetry/poetry-plugin-export
+    rev: 1.9.0
+    hooks:
+      - id: poetry-export
+        args: ["--without", "dev", "-f", "requirements.txt", "-o", "requirements.txt"]
