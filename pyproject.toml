@@ -7,8 +7,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.11"
-sqlalchemy = "^2.0.40"
 fastapi = {extras = ["standard"], version = "^0.115.12"}
+sqlalchemy = {extras = ["asyncio"], version = "^2.0.40"}
+asyncpg = "^0.30.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"

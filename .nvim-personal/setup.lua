@@ -6,7 +6,7 @@ local opts = { remap = false, silent = true }
 
 -- Space + A - Куча команд.
 tasks = {
-	{ "run", [[.venv\Scripts\ruff.exe check src && .venv\Scripts\python.exe src\main.py --reload]] },
+	{ "run", [[.venv\Scripts\ruff.exe check src && .venv\Scripts\fastapi.exe dev src\main.py --reload]] },
 }
 
 vim.defer_fn(function()

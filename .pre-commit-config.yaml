@@ -27,3 +27,13 @@ repos:
         pass_filenames: false
         types: [python]
         language: system
+
+  # Использовать poetry в docker - долго.
+  # `pip install -r requirements.txt` отрабатывает быстро + не нагромождает лишним.
+  # Экспортируется с хешами для безопасности.
+  # Без локальных инструментов разработки вроде форматтеров и линтеров.
+  - repo: https://github.com/python-poetry/poetry-plugin-export
+    rev: 1.9.0
+    hooks:
+      - id: poetry-export
+        args: ["--without", "dev", "-f", "requirements.txt", "-o", "requirements.txt"]
