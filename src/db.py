@@ -8,12 +8,13 @@ from sqlalchemy.ext.declarative import declarative_base
 
 class DbSettings(BaseSettings):
     db: str = Field(str)
+    host: str = Field(str)
     user: str = Field(str)
     password: str = Field(str)
 
     def dns(self) -> str:
-        return "postgresql+asyncpg://{}:{}@localhost:5432/{}".format(
-            self.user, self.db, self.password
+        return "postgresql+asyncpg://{}:{}@{}:5432/{}".format(
+            self.user, self.db, self.host, self.password
         )
 
 
