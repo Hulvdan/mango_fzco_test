@@ -10,6 +10,7 @@ python = "^3.11"
 fastapi = {extras = ["standard"], version = "^0.115.12"}
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.40"}
 asyncpg = "^0.30.0"
+pydantic-settings = "^2.8.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"
@@ -31,38 +32,39 @@ profile = "black"
 select = ["ALL"]
 ignore = [
     "ANN",
-    "PLR5501",
-    "TRY300",
-    "FBT003",
-    "PLW0603",
-    "G001",
-    "G004",
-    "PLR1722",
-    "SIM103",
-    "RUF012",
-    "PLR1714",
-    "N806",
-    "T201",
-    "BLE001",
-    "SIM108",
-    "LOG002",
     "B011",
+    "BLE001",
     "C401",
     "C901",
     "COM",
     "D",
     "E501",
     "E731",
+    "ERA001",
     "FA102",
+    "FBT003",
+    "G001",
+    "G004",
+    "LOG002",
+    "N806",
     "PERF401",
     "PLR0912",
     "PLR0913",
     "PLR0915",
+    "PLR1714",
+    "PLR1722",
     "PLR2004",
+    "PLR5501",
+    "PLW0603",
     "PTH123",
     "RUF003",
+    "RUF012",
     "S",
     "SIM102",
+    "SIM103",
+    "SIM108",
+    "T201",
+    "TRY300",
     "UP032",
     "UP035",
 ]
