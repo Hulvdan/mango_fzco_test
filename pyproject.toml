@@ -1,0 +1,72 @@
+[tool.poetry]
+name = "mango-fzco-test"
+version = "0.1.0"
+description = ""
+authors = ["Aleksei Chistov <aleksey.chistov@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.12"
+sqlalchemy = "^2.0.40"
+
+[tool.poetry.group.dev.dependencies]
+black = "^25.1.0"
+isort = "^6.0.1"
+ruff = "^0.11.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 90
+
+[tool.isort]
+profile = "black"
+
+[tool.ruff]
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "ANN",
+    "PLR5501",
+    "TRY300",
+    "FBT003",
+    "PLW0603",
+    "G001",
+    "G004",
+    "PLR1722",
+    "SIM103",
+    "RUF012",
+    "PLR1714",
+    "N806",
+    "T201",
+    "BLE001",
+    "SIM108",
+    "LOG002",
+    "B011",
+    "C401",
+    "C901",
+    "COM",
+    "D",
+    "E501",
+    "E731",
+    "FA102",
+    "PERF401",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+    "PLR2004",
+    "PTH123",
+    "RUF003",
+    "S",
+    "SIM102",
+    "UP032",
+    "UP035",
+]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "-q"]
+pythonpath = "cli"
+testpaths = ["cli/test.py"]
