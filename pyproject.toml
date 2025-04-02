@@ -18,6 +18,7 @@ pydantic-settings = "^2.8.1"
 black = "^25.1.0"
 isort = "^6.0.1"
 ruff = "^0.11.2"
+pytest = "^8.3.5"
 
 [build-system]
 requires = ["poetry-core"]
@@ -73,5 +74,5 @@ ignore = [
 
 [tool.pytest.ini_options]
 addopts = ["-ra", "-q"]
-pythonpath = "cli"
-testpaths = ["cli/test.py"]
+pythonpath = "src"
+testpaths = ["src/test.py"]
