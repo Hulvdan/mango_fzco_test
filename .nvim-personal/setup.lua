@@ -6,7 +6,7 @@ local opts = { remap = false, silent = true }
 
 -- Space + A - Куча команд.
 tasks = {
-	{ "run", [[.venv\Scripts\ruff.exe check src && .venv\Scripts\python.exe src\main.py ]] },
+	{ "run", [[.venv\Scripts\ruff.exe check src && .venv\Scripts\python.exe src\main.py --reload]] },
 }
 
 vim.defer_fn(function()
@@ -30,3 +30,10 @@ end, 1)
 vim.keymap.set("n", "<C-n>", function()
 	vim.api.nvim_input("o# nocheckin<ESC>")
 end, opts)
+
+require("conform").setup({
+	formatters = {
+		black = { command = [[.venv\Scripts\black.exe]] },
+		isort = { command = [[.venv\Scripts\isort.exe]] },
+	},
+})

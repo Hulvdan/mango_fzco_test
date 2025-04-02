@@ -1,7 +1,7 @@
 # https://pre-commit.com/
 repos:
   # Хук, чтобы я не вкоммичивал строки, в которых `nocheckin` - временный маркер,
-  # который я ставлю во время разработки, чтобы я обязательно обратил на него внимание.
+  # который я ставлю во время разработки, чтобы я не забыл и обязательно обратил на что-то внимание.
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
     hooks:
@@ -11,19 +11,19 @@ repos:
         files: ^(?!.pre-commit-config).*.(h|c|hpp|cpp|json|jsonc|yaml|yml|txt|py|md|toml|cfg)$
         types: []
 
-  # Форматирование и линтинг
   - repo: local
     hooks:
-      - id: format
-        name: format
-        entry: poetry run black src && poetry run isort src
-        pass_filenames: false
-        always_run: true
-        language: system
-
       - id: lint
         name: lint
         entry: poetry run ruff check src
         pass_filenames: false
-        always_run: true
+        types: [python]
+        language: system
+        fail_fast: true
+
+      - id: format
+        name: format
+        entry: poetry run black src && poetry run isort src
+        pass_filenames: false
+        types: [python]
         language: system
