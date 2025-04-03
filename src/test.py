@@ -11,7 +11,7 @@ client = TestClient(main.app)
 
 
 def request_as_factory(client_method) -> Callable[[...], Response]:
-    def request_as(user_id: int, *args, **kwargs):
+    def request_as(_: int, *args, **kwargs):
         return client_method(*args, **kwargs)
 
     return request_as

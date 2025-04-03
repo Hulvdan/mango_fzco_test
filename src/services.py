@@ -9,15 +9,15 @@ from .db import Group, GroupParticipant, User
 _pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-class DomainException(Exception):
+class DomainError(Exception):
     status: int
 
 
-class UserDoesNotExist(DomainException):
+class UserDoesNotExistError(DomainError):
     status = 404
 
 
-class WrongPassword(DomainException):
+class WrongPasswordError(DomainError):
     status = 404
 
 
@@ -29,10 +29,10 @@ class Login(BaseModel):
 async def login(data: Login, session) -> int:
     user = (await session.execute(select(User).where(User.email == data.email))).scalar()
     if user is None:
-        raise UserDoesNotExist
+        raise UserDoesNotExistError
 
     if not _pwd_context.verify(data.password, user.password):
-        raise WrongPassword
+        raise WrongPasswordError
 
     return user.id
 
@@ -49,11 +49,11 @@ class MakeGroup(BaseModel):
     participant_user_ids: list[int]
 
 
-class MakeGroupTooManyParticipants(DomainException):
+class MakeGroupTooManyParticipantsError(DomainError):
     status = 400
 
 
-class MakeGroupSomeParticipantsDontExist(DomainException):
+class MakeGroupSomeParticipantsDontExistError(DomainError):
     status = 404
 
 
@@ -69,9 +69,8 @@ async def make_group(data: MakeGroup, creator_id: int, session) -> int:
         data.participant_user_ids.append(creator_id)
 
     if len(data.participant_user_ids) > 100:
-        raise MakeGroupTooManyParticipants
+        raise MakeGroupTooManyParticipantsError
 
-    # TODO validate all participants exist
     existing_users_count = (
         await session.execute(
             select(func.count(User.id))
@@ -81,7 +80,7 @@ async def make_group(data: MakeGroup, creator_id: int, session) -> int:
     ).scalar()
 
     if existing_users_count != len(data.participant_user_ids):
-        raise MakeGroupSomeParticipantsDontExist
+        raise MakeGroupSomeParticipantsDontExistError
 
     group = Group(name=data.name, creator_id=creator_id)
     session.add(group)

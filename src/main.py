@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
-from typing import Annotated, Type
+from typing import Annotated
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, WebSocket
@@ -23,8 +23,8 @@ async def app_lifespan(_):
 app = FastAPI(lifespan=app_lifespan)
 
 
-@app.exception_handler(services.DomainException)
-async def unicorn_exception_handler(_: Request, exc: Type[services.DomainException]):
+@app.exception_handler(services.DomainError)
+async def unicorn_exception_handler(_: Request, exc: type[services.DomainError]):
     return JSONResponse(
         status_code=exc.status, content={"message": exc.__class__.__name__}
     )

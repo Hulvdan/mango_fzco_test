@@ -11,6 +11,7 @@ python = "^3.11"
 fastapi = "^0.115.12"
 fastapi-cli = "^0.0.7"
 websockets = "^15.0.1"
+python-multipart = "^0.0.20"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.40"}
 asyncpg = "^0.30.0"
 pydantic-settings = "^2.8.1"
@@ -41,6 +42,7 @@ select = ["ALL"]
 ignore = [
     "ANN",
     "B008",
+    "B904",
     "B011",
     "BLE001",
     "C401",

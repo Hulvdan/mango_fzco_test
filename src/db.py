@@ -1,4 +1,3 @@
-
 import sqlalchemy as sa
 from sqlalchemy import CHAR, Column, ForeignKey, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine

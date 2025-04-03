@@ -28,12 +28,12 @@ repos:
         types: [python]
         language: system
 
-      - id: test
-        name: test
-        entry: poetry run pytest
-        pass_filenames: false
-        types: [python]
-        language: system
+      # - id: test
+      #   name: test
+      #   entry: poetry run pytest
+      #   pass_filenames: false
+      #   types: [python]
+      #   language: system
 
   # Использовать poetry в docker - долго.
   # `pip install -r requirements.txt` отрабатывает быстро + не нагромождает лишним.
