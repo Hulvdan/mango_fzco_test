@@ -13,12 +13,16 @@ fastapi-cli = "^0.0.7"
 sqlalchemy = {extras = ["asyncio"], version = "^2.0.40"}
 asyncpg = "^0.30.0"
 pydantic-settings = "^2.8.1"
+websockets = "^15.0.1"
+bcrypt = "^4.3.0"
+pytest-asyncio = "^0.26.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^25.1.0"
 isort = "^6.0.1"
 ruff = "^0.11.2"
 pytest = "^8.3.5"
+httpx = "^0.28.1"
 
 [build-system]
 requires = ["poetry-core"]
@@ -35,6 +39,7 @@ profile = "black"
 select = ["ALL"]
 ignore = [
     "ANN",
+    "B008",
     "B011",
     "BLE001",
     "C401",
@@ -46,6 +51,7 @@ ignore = [
     "ERA001",
     "FA102",
     "FBT003",
+    "FIX002",
     "G001",
     "G004",
     "LOG002",
@@ -67,6 +73,7 @@ ignore = [
     "SIM103",
     "SIM108",
     "T201",
+    "TD",
     "TRY300",
     "UP032",
     "UP035",
@@ -76,3 +83,4 @@ ignore = [
 addopts = ["-ra", "-q"]
 pythonpath = "src"
 testpaths = ["src/test.py"]
+asyncio_mode = "auto"

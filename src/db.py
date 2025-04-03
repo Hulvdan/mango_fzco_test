@@ -1,36 +1,25 @@
+from contextlib import contextmanager
+
 import sqlalchemy as sa
-from pydantic import Field
-from pydantic_settings import BaseSettings
 from sqlalchemy import Column, ForeignKey, Integer, String
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 
+from .settings import settings
 
-class DbSettings(BaseSettings):
-    db: str = Field(str)
-    host: str = Field(str)
-    user: str = Field(str)
-    password: str = Field(str)
-
-    def dns(self) -> str:
-        return "postgresql+asyncpg://{}:{}@{}:5432/{}".format(
-            self.user, self.db, self.host, self.password
-        )
+_Table = declarative_base()
 
 
-Table = declarative_base()
-
-
-class User(Table):
+class User(_Table):
     __tablename__ = "users"
 
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = Column(String(50))
+    email = Column(String(50), unique=True)
+    password = Column(String(60))
 
-    password = Column(String())
 
-
-class Chat(Table):
+class Chat(_Table):
     __tablename__ = "chats"
 
     TYPE_PERSONAL = 0
@@ -40,7 +29,7 @@ class Chat(Table):
     type = Column(sa.SmallInteger)
 
 
-class Group(Table):
+class Group(_Table):
     __tablename__ = "groups"
 
     id = Column(Integer, autoincrement=True, primary_key=True)
@@ -52,14 +41,14 @@ class Group(Table):
     # children = relationship("Child", back_populates="parent")
 
 
-class GroupParticipant(Table):
+class GroupParticipant(_Table):
     __tablename__ = "group_participants"
 
     group_id = Column(Integer, ForeignKey("groups.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
 
 
-class Message(Table):
+class Message(_Table):
     __tablename__ = "messages"
 
     id = Column(Integer, autoincrement=True, primary_key=True)
@@ -67,10 +56,22 @@ class Message(Table):
     # id, chat_id, sender_id, text, timestamp, прочитано
 
 
-engine = create_async_engine(DbSettings(_env_prefix="POSTGRES_", _env_file=".env").dns())
-session = sa.orm.sessionmaker(bind=engine)()
+_engine = create_async_engine(settings.postgres_dsn)
+_sessionmaker = sa.orm.sessionmaker(
+    bind=_engine, autoflush=False, autocommit=False, class_=AsyncSession
+)
 
 
-async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Table.metadata.drop_all)
+# По-идее эта штука вполне могла бы await-ить,
+# пока не получим какой-то освободившийся коннект в пуле.
+@contextmanager
+def make_session():
+    session = _sessionmaker()
+    yield session
+    session.close()
+
+
+async def reinit_db_from_scratch():
+    async with _engine.begin() as conn:
+        await conn.run_sync(_Table.metadata.drop_all)
+        await conn.run_sync(_Table.metadata.create_all)
