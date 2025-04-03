@@ -16,7 +16,7 @@ def request_as_factory(client_method) -> Callable[[...], Response]:
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = "Bearer {}".format(main.create_access_token(user_id))
 
-        return client_method(*args, **kwargs)
+        return client_method(*args, **kwargs, headers=headers)
 
     return request_as
 
@@ -51,14 +51,13 @@ _last_created_user = 0
 
 async def create_user(session) -> int:
     global _last_created_user
-    user_id = await services.make_user(
+    _last_created_user += 1
+    return await services.make_user(
         email=f"test{_last_created_user}@test.com",
         password="test",
         name="test_name",
         session=session,
     )
-    _last_created_user += 1
-    return user_id
 
 
 async def test_login(session):
