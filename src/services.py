@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from .db import Group, GroupParticipant, User
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class DomainError(Exception):
@@ -31,14 +31,14 @@ async def login(data: Login, session) -> int:
     if user is None:
         raise UserDoesNotExistError
 
-    if not _pwd_context.verify(data.password, user.password):
+    if not _password_context.verify(data.password, user.password):
         raise WrongPasswordError
 
     return user.id
 
 
 async def make_user(*, email: str, name: str, password: str, session) -> int:
-    user = User(email=email, name=name, password=_pwd_context.hash(password))
+    user = User(email=email, name=name, password=_password_context.hash(password))
     session.add(user)
     await session.commit()
     return user.id

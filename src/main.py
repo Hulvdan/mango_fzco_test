@@ -16,6 +16,7 @@ from .settings import settings
 # Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же
 @asynccontextmanager
 async def app_lifespan(_):
+    db.init_engine_and_sessionmaker()
     await services.fill_db_with_initial_data()
     yield
 

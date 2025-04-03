@@ -54,15 +54,25 @@ class Message(_Table):
     # id, chat_id, sender_id, text, timestamp, прочитано
 
 
-_engine = create_async_engine(settings.postgres_dsn)
+_engine = None
+_sessionmaker = None
 
-_sessionmaker = sa.orm.sessionmaker(
-    bind=_engine,
-    autoflush=False,
-    autocommit=False,
-    expire_on_commit=False,
-    class_=AsyncSession,
-)
+
+# Для pytest `custom_poolclass` ставится NullPool.
+def init_engine_and_sessionmaker(*, custom_poolclass=None):
+    global _engine
+    global _sessionmaker
+
+    assert _engine is None
+
+    _engine = create_async_engine(settings.postgres_dsn, poolclass=custom_poolclass)
+    _sessionmaker = sa.orm.sessionmaker(
+        bind=_engine,
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
 
 
 # По-идее эта штука вполне могла бы await-ить,
