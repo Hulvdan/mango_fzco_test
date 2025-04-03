@@ -1,7 +1,6 @@
-from contextlib import contextmanager
 
 import sqlalchemy as sa
-from sqlalchemy import Column, ForeignKey, Integer, String
+from sqlalchemy import CHAR, Column, ForeignKey, Integer, String
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -16,7 +15,7 @@ class User(_Table):
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = Column(String(50))
     email = Column(String(50), unique=True)
-    password = Column(String(60))
+    password = Column(CHAR(60))  # Храним hash размером 60 байт
 
 
 class Chat(_Table):
@@ -57,18 +56,24 @@ class Message(_Table):
 
 
 _engine = create_async_engine(settings.postgres_dsn)
+
 _sessionmaker = sa.orm.sessionmaker(
-    bind=_engine, autoflush=False, autocommit=False, class_=AsyncSession
+    bind=_engine,
+    autoflush=False,
+    autocommit=False,
+    expire_on_commit=False,
+    class_=AsyncSession,
 )
 
 
 # По-идее эта штука вполне могла бы await-ить,
 # пока не получим какой-то освободившийся коннект в пуле.
-@contextmanager
-def make_session():
+async def make_session():
     session = _sessionmaker()
-    yield session
-    session.close()
+    try:
+        yield session
+    finally:
+        await session.close()
 
 
 async def reinit_db_from_scratch():

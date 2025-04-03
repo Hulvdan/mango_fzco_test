@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    service_password_salt: str = Field(str)
+    service_secret: str = Field(str)
 
     postgres_db: str = Field(str)
     postgres_host: str = Field(str)

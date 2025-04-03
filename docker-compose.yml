@@ -10,7 +10,7 @@ services:
     depends_on:
       - db
     environment: &env
-      SERVICE_PASSWORD_SALT: $2b$12$9WH9YWvNoaYbckGl.6ZTYu
+      SERVICE_SECRET: secret
       POSTGRES_HOST: db
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
