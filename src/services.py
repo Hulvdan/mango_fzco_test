@@ -1,8 +1,8 @@
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from .db import Group, GroupParticipant, User
 
@@ -49,7 +49,7 @@ class MakeGroup(BaseModel):
     participant_user_ids: list[int]
 
 
-class MakeGroupTooManyParticipantsProvided(DomainException):
+class MakeGroupTooManyParticipants(DomainException):
     status = 400
 
 
@@ -69,9 +69,19 @@ async def make_group(data: MakeGroup, creator_id: int, session) -> int:
         data.participant_user_ids.append(creator_id)
 
     if len(data.participant_user_ids) > 100:
-        raise MakeGroupTooManyParticipantsProvided
+        raise MakeGroupTooManyParticipants
 
     # TODO validate all participants exist
+    existing_users_count = (
+        await session.execute(
+            select(func.count(User.id))
+            .select_from(User)
+            .where(User.id.in_(data.participant_user_ids))
+        )
+    ).scalar()
+
+    if existing_users_count != len(data.participant_user_ids):
+        raise MakeGroupSomeParticipantsDontExist
 
     group = Group(name=data.name, creator_id=creator_id)
     session.add(group)

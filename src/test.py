@@ -1,5 +1,4 @@
-import asyncio
-from contextlib import contextmanager, asynccontextmanager
+from contextlib import asynccontextmanager
 from typing import Callable
 
 import pytest

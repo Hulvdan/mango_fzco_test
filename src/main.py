@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, Type
 
 import jwt
-from fastapi import Depends, FastAPI, HTTPException, Response, WebSocket
+from fastapi import Depends, FastAPI, HTTPException, WebSocket
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from pydantic import BaseModel
 from starlette.requests import Request
@@ -82,7 +82,8 @@ async def make_group_endpoint(
     user_id=Depends(get_user_id),
     session=Depends(db.make_session),
 ) -> MakeGroupResponse:
-    return MakeGroupResponse(group_id=services.make_group(body, user_id, session))
+    group_id = await services.make_group(body, user_id, session)
+    return MakeGroupResponse(group_id=group_id)
 
 
 @app.websocket("/ws/")
