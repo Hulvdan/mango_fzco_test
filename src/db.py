@@ -1,5 +1,19 @@
+from contextlib import asynccontextmanager
+from datetime import datetime
+
 import sqlalchemy as sa
-from sqlalchemy import CHAR, Column, ForeignKey, Integer, String
+from sqlalchemy import (
+    CHAR,
+    BigInteger,
+    Column,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    SmallInteger,
+    String,
+    Text,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -24,7 +38,30 @@ class Chat(_Table):
     TYPE_GROUP = 1
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    type = Column(sa.SmallInteger)
+    type = Column(SmallInteger)
+
+    # Если это чат пользователей,
+    # здесь будет user1_id << 32 + user2_id (user1_id, user2_id отсортированы).
+    user_ids = Column(BigInteger, unique=True, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_user_ids",
+            "user_ids",
+            user_ids != None,
+        ),
+    )
+
+    # Честно говоря, очень хотел упаковать всё в одну колонку int64 id.
+    #
+    # Если это был бы чат двух пользователей,
+    # то в первых 4 байтах бы хранился id первого пользователя,
+    # во вторых - второго.
+    #
+    # Если бы это был групповой чат, первые 4 байта всегда были бы 0.
+    # Создание нового группового чата назначало бы id через Sequence.
+    #
+    # Решил не выпендриваться из-за «Соответствие всем указанным требованиям».
 
 
 class Group(_Table):
@@ -33,16 +70,13 @@ class Group(_Table):
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = String(50)
     creator_id = Column(Integer, ForeignKey("users.id"))
-    # id, название, создатель, список участников.
-
-    # participants =
-    # children = relationship("Child", back_populates="parent")
+    chat_id = Column(Integer, ForeignKey("chats.id"))
 
 
-class GroupParticipant(_Table):
-    __tablename__ = "group_participants"
+class ChatParticipant(_Table):
+    __tablename__ = "chat_participants"
 
-    group_id = Column(Integer, ForeignKey("groups.id"), primary_key=True)
+    chat_id = Column(Integer, ForeignKey("chats.id"), primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
 
 
@@ -51,19 +85,25 @@ class Message(_Table):
 
     id = Column(Integer, autoincrement=True, primary_key=True)
     chat_id = Column(Integer, ForeignKey("chats.id"))
+    sender_id = Column(Integer, ForeignKey("users.id"))
+    text = Column(Text)
+    timestamp = Column(DateTime, default=datetime.utcnow)
     # id, chat_id, sender_id, text, timestamp, прочитано
+
+    __table_args__ = (Index("ix_chat_id", "chat_id"),)
 
 
 _engine = None
 _sessionmaker = None
 
 
-# Для pytest `custom_poolclass` ставится NullPool.
+# Для pytest `custom_poolclass` ставится NullPool, чтобы не было проблем с asyncio.
 def init_engine_and_sessionmaker(*, custom_poolclass=None):
     global _engine
     global _sessionmaker
 
     assert _engine is None
+    assert _sessionmaker is None
 
     _engine = create_async_engine(settings.postgres_dsn, poolclass=custom_poolclass)
     _sessionmaker = sa.orm.sessionmaker(
@@ -75,9 +115,9 @@ def init_engine_and_sessionmaker(*, custom_poolclass=None):
     )
 
 
-# По-идее эта штука вполне могла бы await-ить,
-# пока не получим какой-то освободившийся коннект в пуле.
 async def make_session():
+    assert _sessionmaker is not None
+
     session = _sessionmaker()
     try:
         yield session
@@ -86,6 +126,11 @@ async def make_session():
 
 
 async def reinit_db_from_scratch():
+    assert _engine is not None
+
+    async with asynccontextmanager(make_session)() as session:
+        await session.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
+        await session.execute(sa.text("CREATE SCHEMA public"))
+
     async with _engine.begin() as conn:
-        await conn.run_sync(_Table.metadata.drop_all)
         await conn.run_sync(_Table.metadata.create_all)

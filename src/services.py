@@ -1,16 +1,21 @@
 from contextlib import asynccontextmanager
+from datetime import datetime
 
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import func, select
 
-from .db import Group, GroupParticipant, User
+from .db import Chat, ChatParticipant, Group, Message, User
 
 _password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class DomainError(Exception):
     status: int
+
+
+class NotAuthorizedError(DomainError):
+    status = 403
 
 
 class UserDoesNotExistError(DomainError):
@@ -68,6 +73,9 @@ async def make_group(data: MakeGroup, creator_id: int, session) -> int:
     if creator_id not in data.participant_user_ids:
         data.participant_user_ids.append(creator_id)
 
+    # Для меня странным кажется то, что человек бы разом
+    # больше 100 участников бы добавлял.
+    # Я бы потом добавил функцию добавления ещё участников.
     if len(data.participant_user_ids) > 100:
         raise MakeGroupTooManyParticipantsError
 
@@ -79,20 +87,125 @@ async def make_group(data: MakeGroup, creator_id: int, session) -> int:
         )
     ).scalar()
 
+    # Считаем, что клиент не прав, если пытается
+    # добавлять несуществующих участников.
     if existing_users_count != len(data.participant_user_ids):
         raise MakeGroupSomeParticipantsDontExistError
 
-    group = Group(name=data.name, creator_id=creator_id)
+    chat = Chat(type=Chat.TYPE_GROUP)
+    session.add(chat)
+    await session.flush()
+
+    group = Group(name=data.name, creator_id=creator_id, chat_id=chat.id)
     session.add(group)
     await session.flush()
 
     session.add_all(
-        GroupParticipant(group_id=group.id, user_id=user_id)
+        ChatParticipant(chat_id=chat.id, user_id=user_id)
         for user_id in data.participant_user_ids
     )
     await session.commit()
 
     return group.id
+
+
+class MakeMessage(BaseModel):
+    text: str
+
+    # # Для предотвращения дублирования при параллельной отправке.
+    # # Разом на 3 сервиса можно было бы отправить запрос
+    # # с одним и тем же timestamp от клиента.
+    # timestamp: int
+
+
+class GroupDoesNotExistError(DomainError):
+    pass
+
+
+class MessageData(BaseModel):
+    id: int
+    chat_id: int
+    sender_id: int
+    text: str
+    timestamp: datetime
+    is_read: bool
+
+
+# async def message_user():
+#     # см. Chat.user_ids
+#     user1 = sender_id
+#     user2 = data.entity_id
+#     if user2 < user1:
+#         user1, user2 = user2, user1
+#     user_ids = user1 << 32 + user2
+#
+#     st = (
+#         insert(Chat).values(user_ids=user_ids).on_conflict_do_nothing().returning(Chat.id)
+#     )
+#     chat_id = (await session.execute(st)).scalar()
+
+
+async def message_group(
+    *, data: MakeMessage, sender_id: int, group_id: int, session
+) -> tuple[MessageData, list[int]]:
+    chat_id = (
+        await session.execute(select(Group.chat_id).filter(Group.id == group_id))
+    ).scalar()
+
+    if chat_id is None:
+        raise GroupDoesNotExistError
+
+    message = Message(
+        chat_id=chat_id,
+        sender_id=sender_id,
+        text=data.text,
+    )
+    session.add(message)
+    await session.commit()
+
+    users_that_could_see = (
+        (
+            await session.execute(
+                select(ChatParticipant.user_id)
+                .select_from(ChatParticipant)
+                .where(ChatParticipant.chat_id == chat_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    return (
+        MessageData(
+            id=message.id,
+            chat_id=message.chat_id,
+            sender_id=message.sender_id,
+            text=message.text,
+            timestamp=message.timestamp,
+            is_read=False,
+        ),
+        users_that_could_see,
+    )
+
+
+async def history(
+    *, chat_id: int, user_id: int, earlier_that_message_id: int, limit: int, session
+) -> list[MessageData]:
+    # * check user can access this chat
+    #   * he is a participant in GROUP
+    #   * he is one of two people chatting
+    #
+    #
+    #
+    messages = await session.execute(
+        select(Message)
+        .where(Message.chat_id == chat_id, Message.id.lt_(earlier_that_message_id))
+        .order_by(Message.id.desc_)
+        .limit(limit)
+    )
+
+
+# async def list_chats_of(user_id: int, session) -> list[int]:
 
 
 async def fill_db_with_initial_data():
