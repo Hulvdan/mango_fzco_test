@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, TypeAlias
 
 import jwt
-from fastapi import Depends, FastAPI, Header, Path, Query, WebSocket
+from fastapi import Depends, FastAPI, Header, Path, WebSocket
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.utils import get_authorization_scheme_param
 from pydantic import BaseModel
@@ -27,7 +27,7 @@ app = FastAPI(lifespan=app_lifespan)
 
 
 @app.exception_handler(services.DomainError)
-async def unicorn_exception_handler(_: Request, exc):
+async def domain_errors_handler(_: Request, exc):
     return JSONResponse(
         status_code=exc.status, content={"message": exc.__class__.__name__}
     )
@@ -75,7 +75,7 @@ async def token_endpoint(
     session=Depends(db.make_session),
 ) -> Token:
     user_id = await services.login(
-        services.Login(email=body.username, password=body.password), session
+        services.LoginData(email=body.username, password=body.password), session
     )
     token = create_access_token(user_id, body.client_id)
     return Token(access_token=token)
@@ -87,7 +87,7 @@ class MakeGroupResponse(BaseModel):
 
 @app.post("/group/", status_code=201)
 async def make_group_endpoint(
-    body: services.MakeGroup,
+    body: services.MakeGroupData,
     user_and_client_id=Depends(get_user_and_client_id),
     session=Depends(db.make_session),
 ) -> MakeGroupResponse:
@@ -108,8 +108,8 @@ connected_users: dict[UserID, WebSocket] = {}
 
 @app.post("/message/user/{user_id}")
 async def message_user_endpoint(
-    data: services.MakeMessage,
-    user_id: int = Path(),
+    data: services.MakeMessageData,
+    user_id: Annotated[int, Path()],
     user_and_client_id=Depends(get_user_and_client_id),
     session=Depends(db.make_session),
 ) -> None:
@@ -121,8 +121,8 @@ background_tasks = set()
 
 @app.post("/message/group/{group_id}")
 async def message_group_endpoint(
-    data: services.MakeMessage,
-    group_id: int = Path(),
+    data: services.MakeMessageData,
+    group_id: Annotated[int, Path()],
     user_and_client_id=Depends(get_user_and_client_id),
     session=Depends(db.make_session),
 ) -> services.MessageData:
@@ -143,21 +143,21 @@ async def message_group_endpoint(
     return message
 
 
-@app.get("/history/{chat_id}")
-async def history_endpoint(
-    chat_id: int,
-    user_id=Depends(get_user_and_client_id),
-    earlier_that_message_id=Query(0),
-    limit=Query(0, gt=0, le=100),
-    session=Depends(db.make_session),
-) -> list[services.MessageData]:
-    return await services.history(
-        chat_id=chat_id,
-        user_id=user_id,
-        earlier_that_message_id=earlier_that_message_id,
-        limit=limit,
-        session=session,
-    )
+# @app.get("/history/{chat_id}")
+# async def history_endpoint(
+#     chat_id: int,
+#     user_id=Depends(get_user_and_client_id),
+#     earlier_that_message_id=Query(0),
+#     limit=Query(0, gt=0, le=100),
+#     session=Depends(db.make_session),
+# ) -> list[services.MessageData]:
+#     return await services.history(
+#         chat_id=chat_id,
+#         user_id=user_id,
+#         earlier_that_message_id=earlier_that_message_id,
+#         limit=limit,
+#         session=session,
+#     )
 
 
 class MessageData(BaseModel):

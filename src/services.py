@@ -26,12 +26,12 @@ class WrongPasswordError(DomainError):
     status = 404
 
 
-class Login(BaseModel):
+class LoginData(BaseModel):
     email: str
     password: str
 
 
-async def login(data: Login, session) -> int:
+async def login(data: LoginData, session) -> int:
     user = (await session.execute(select(User).where(User.email == data.email))).scalar()
     if user is None:
         raise UserDoesNotExistError
@@ -49,7 +49,7 @@ async def make_user(*, email: str, name: str, password: str, session) -> int:
     return user.id
 
 
-class MakeGroup(BaseModel):
+class MakeGroupData(BaseModel):
     name: str
     participant_user_ids: list[int]
 
@@ -69,7 +69,7 @@ class MakeGroupSomeParticipantsDontExistError(DomainError):
 #
 # Можно разделить session на read_only_session и write_session.
 # Для валидации - ходили бы в реплику. Так мы снизили бы нагрузку на master БД.
-async def make_group(data: MakeGroup, creator_id: int, session) -> int:
+async def make_group(data: MakeGroupData, creator_id: int, session) -> int:
     if creator_id not in data.participant_user_ids:
         data.participant_user_ids.append(creator_id)
 
@@ -109,7 +109,7 @@ async def make_group(data: MakeGroup, creator_id: int, session) -> int:
     return group.id
 
 
-class MakeMessage(BaseModel):
+class MakeMessageData(BaseModel):
     text: str
 
     # # Для предотвращения дублирования при параллельной отправке.
@@ -146,7 +146,7 @@ class MessageData(BaseModel):
 
 
 async def message_group(
-    *, data: MakeMessage, sender_id: int, group_id: int, session
+    *, data: MakeMessageData, sender_id: int, group_id: int, session
 ) -> tuple[MessageData, list[int]]:
     chat_id = (
         await session.execute(select(Group.chat_id).filter(Group.id == group_id))
@@ -188,21 +188,21 @@ async def message_group(
     )
 
 
-async def history(
-    *, chat_id: int, user_id: int, earlier_that_message_id: int, limit: int, session
-) -> list[MessageData]:
-    # * check user can access this chat
-    #   * he is a participant in GROUP
-    #   * he is one of two people chatting
-    #
-    #
-    #
-    messages = await session.execute(
-        select(Message)
-        .where(Message.chat_id == chat_id, Message.id.lt_(earlier_that_message_id))
-        .order_by(Message.id.desc_)
-        .limit(limit)
-    )
+# async def history(
+#     *, chat_id: int, user_id: int, earlier_that_message_id: int, limit: int, session
+# ) -> list[MessageData]:
+#     # * check user can access this chat
+#     #   * he is a participant in GROUP
+#     #   * he is one of two people chatting
+#     #
+#     #
+#     #
+#     messages = await session.execute(
+#         select(Message)
+#         .where(Message.chat_id == chat_id, Message.id.lt_(earlier_that_message_id))
+#         .order_by(Message.id.desc_)
+#         .limit(limit)
+#     )
 
 
 # async def list_chats_of(user_id: int, session) -> list[int]:
@@ -214,7 +214,7 @@ async def fill_db_with_initial_data():
     await reinit_db_from_scratch()
 
     async with asynccontextmanager(make_session)() as session:
-        for i in range(3):
+        for i in range(1, 4):
             await make_user(
                 email=f"test{i}@test.com",
                 name=f"test{i}",

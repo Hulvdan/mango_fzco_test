@@ -28,7 +28,7 @@ class User(_Table):
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = Column(String(50))
     email = Column(String(50), unique=True)
-    password = Column(CHAR(60))  # Храним hash размером 60 байт
+    password = Column(CHAR(60))  # Hash 60 байт
 
 
 class Chat(_Table):
@@ -42,15 +42,9 @@ class Chat(_Table):
 
     # Если это чат пользователей,
     # здесь будет user1_id << 32 + user2_id (user1_id, user2_id отсортированы).
-    user_ids = Column(BigInteger, unique=True, nullable=True)
+    user_ids: Column[int] = Column(BigInteger, unique=True, nullable=True)
 
-    __table_args__ = (
-        Index(
-            "ix_user_ids",
-            "user_ids",
-            user_ids != None,
-        ),
-    )
+    __table_args__ = (Index("ix_user_ids", "user_ids", user_ids != None),)
 
     # Честно говоря, очень хотел упаковать всё в одну колонку int64 id.
     #
@@ -131,6 +125,7 @@ async def reinit_db_from_scratch():
     async with asynccontextmanager(make_session)() as session:
         await session.execute(sa.text("DROP SCHEMA IF EXISTS public CASCADE"))
         await session.execute(sa.text("CREATE SCHEMA public"))
+        await session.commit()
 
     async with _engine.begin() as conn:
         await conn.run_sync(_Table.metadata.create_all)

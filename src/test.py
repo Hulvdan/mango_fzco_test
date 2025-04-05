@@ -96,13 +96,7 @@ async def test_login(session):
 async def test_make_group(session):
     user1 = await create_user(session)
     user2 = await create_user(session)
-
-    response = client.post_as(
-        user1,
-        "/group",
-        json={"name": "test_group", "participant_user_ids": [user1, user2]},
-    )
-    is_ok(response)
+    make_group_as(user1, [user1, user2])
 
 
 async def make_group_as(user_id: int, participants: list[int]):
@@ -124,13 +118,10 @@ def message_group_as(user_id: int, group_id: int, text: str):
     is_ok(response)
 
 
-async def test_group_messaging():
-    user1 = 1
-    user2 = 2
-    user3 = 3
-    # user1 = await create_user(session)
-    # user2 = await create_user(session)
-    # user3 = await create_user(session)
+async def test_group_messaging(session):
+    user1 = await create_user(session)
+    user2 = await create_user(session)
+    user3 = await create_user(session)
 
     group_123 = await make_group_as(user2, [user1, user2, user3])
     group_23 = await make_group_as(user2, [user2, user3])
