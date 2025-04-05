@@ -11,7 +11,10 @@ from starlette.testclient import WebSocketTestSession
 
 from . import db, main, services
 
-client = TestClient(main.app)
+
+@pytest.fixture(scope="session", autouse=True)
+async def init_engine_and_sessionmaker():
+    db.init_engine_and_sessionmaker(custom_poolclass=NullPool)
 
 
 def request_as_factory(client_method) -> Callable[[...], Response]:
@@ -35,8 +38,11 @@ def websocket_as_factory(client_method) -> Callable[[...], WebSocketTestSession]
 
         ws = client_method(*args, **kwargs, headers=headers)
 
+        # С синхронным API по-умолчанию тестировать «отсутствие получения сообщения»
+        # невозможно, т.к. функция начинает бесконечно спать. Прикрутил штуку, что
+        # выкидывает TimeoutError, если никакое сообщение не пришло.
         async def receive_json_async():
-            result = await asyncio.wait_for(ws._send_rx.receive(), 0.2)  # noqa: SLF001
+            result = await asyncio.wait_for(ws._send_rx.receive(), 0.1)  # noqa: SLF001
             return json.loads(result["text"])
 
         ws.receive_json_async = receive_json_async
@@ -45,17 +51,13 @@ def websocket_as_factory(client_method) -> Callable[[...], WebSocketTestSession]
     return request_as
 
 
+client = TestClient(main.app)
 client.get_as = request_as_factory(client.get)
 client.post_as = request_as_factory(client.post)
 client.put_as = request_as_factory(client.put)
 client.patch_as = request_as_factory(client.patch)
 client.delete_as = request_as_factory(client.delete)
 client.websocket_connect_as = websocket_as_factory(client.websocket_connect)
-
-
-@pytest.fixture(scope="session", autouse=True)
-async def init_engine_and_sessionmaker():
-    db.init_engine_and_sessionmaker(custom_poolclass=NullPool)
 
 
 @pytest.fixture
@@ -110,7 +112,10 @@ async def make_group_as(user_id: int, participants: list[int]):
     response = client.post_as(
         user_id,
         "/group",
-        json={"name": "test_group", "participant_user_ids": participants},
+        json={
+            "name": "test_group",
+            "participant_user_ids": participants,
+        },
     )
     is_ok(response)
     j = response.json()
@@ -173,15 +178,15 @@ async def test_history(session):
     is_ok(response)
 
     j = response.json()
-    assert j[0]["text"] == "3"
+    assert j[0]["text"] == "1"
     assert j[1]["text"] == "2"
-    assert j[2]["text"] == "1"
+    assert j[2]["text"] == "3"
 
     response = client.get_as(
-        user, f"history/{chat_id}", params={"earlier_that_message_id": j[0]["id"]}
+        user, f"history/{chat_id}", params={"later_that_message_id": j[0]["id"]}
     )
     is_ok(response)
     j = response.json()
     assert len(j) == 2
     assert j[0]["text"] == "2"
-    assert j[1]["text"] == "1"
+    assert j[1]["text"] == "3"

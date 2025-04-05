@@ -15,7 +15,7 @@ from . import db, services
 from .settings import settings
 
 
-# Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же
+# Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же.
 @asynccontextmanager
 async def app_lifespan(_):
     db.init_engine_and_sessionmaker()
@@ -94,10 +94,6 @@ ConnectedUserClient: TypeAlias = tuple[int, ClientID]
 GroupID: TypeAlias = int
 
 
-connected_personal: dict[ConnectedUserClient, UserID] = {}
-connected_groups: dict[GroupID, list[ConnectedUserClient]] = {}
-
-
 connected_users: dict[UserID, WebSocket] = {}
 
 
@@ -142,16 +138,17 @@ async def message_group_endpoint(
 async def history_endpoint(
     chat_id: int,
     user_and_client_id=Depends(get_user_and_client_id),
-    # Фильтрование по Message.id < X не требует
+    # Фильтрование по Message.id > X не требует
     # от БД хождения по страницам, как OFFSET.
-    earlier_that_message_id: int | None = Query(None),
+    # Также я не совсем понимаю, почему по возрастанию времени отправки бы сортировали, но ладно.
+    later_that_message_id: int | None = Query(None),
     limit=Query(10, gt=0, le=100),
     session=Depends(db.make_session),
 ) -> list[services.MessageData]:
     return await services.history(
         chat_id=chat_id,
         user_id=user_and_client_id[0],
-        earlier_that_message_id=earlier_that_message_id,
+        later_that_message_id=later_that_message_id,
         limit=limit,
         session=session,
     )
@@ -174,7 +171,8 @@ async def websocket_endpoint(websocket: WebSocket, authorization: str = Header(.
 
     try:
         await websocket.accept()
+        # Кешируем подключение, пока не разорвётся соединение.
         connected_users[user_id] = websocket
-        await asyncio.Future()  # Бесконечно ждём...
+        await asyncio.Future()
     finally:
         connected_users.pop(user_id, None)

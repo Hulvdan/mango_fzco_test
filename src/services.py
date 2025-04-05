@@ -201,7 +201,7 @@ class UserCantAccessSpecifiedChatError(DomainError):
 
 
 async def history(
-    *, chat_id: int, user_id: int, earlier_that_message_id: int, limit: int, session
+    *, chat_id: int, user_id: int, later_that_message_id: int, limit: int, session
 ) -> list[MessageData]:
     can_access_chat = (
         await session.execute(
@@ -215,12 +215,19 @@ async def history(
         raise UserCantAccessSpecifiedChatError
 
     statement = select(Message).where(Message.chat_id == chat_id)
-    if earlier_that_message_id:
-        statement = statement.where(Message.id < earlier_that_message_id)
+    if later_that_message_id:
+        statement = statement.where(Message.id > later_that_message_id)
 
+    # «Сообщения должны быть отсортированы по времени отправки (по возрастанию)»
+    # Отсортировал по возрастанию id - не нужно вешать отдельный индекс на timestamp.
+    # Эффект в данном случае тот же.
+    #
+    # Не совсем понимаю, почему «по возрастанию». В телеграмме я по-идее бы делал так,
+    # чтобы выводились сперва самые новые сообщения. А историю мы бы крутили вспять.
     messages = (
-        await session.execute(statement.order_by(Message.id.desc()).limit(limit))
+        await session.execute(statement.order_by(Message.id.asc()).limit(limit))
     ).scalars()
+
     return [
         MessageData(
             id=i.id,
