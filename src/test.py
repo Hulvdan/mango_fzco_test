@@ -109,7 +109,7 @@ async def test_login(session):
 async def test_make_group(session):
     user1 = await create_user(session)
     user2 = await create_user(session)
-    make_group_as(user1, [user1, user2])
+    await make_group_as(user1, [user1, user2])
 
 
 async def make_group_as(user_id: int, participants: list[int]):
