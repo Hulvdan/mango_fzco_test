@@ -82,7 +82,6 @@ class Message(_Table):
     sender_id = Column(Integer, ForeignKey("users.id"))
     text = Column(Text)
     timestamp = Column(DateTime, default=datetime.utcnow)
-    # id, chat_id, sender_id, text, timestamp, прочитано
 
     __table_args__ = (Index("ix_chat_id", "chat_id"),)
 

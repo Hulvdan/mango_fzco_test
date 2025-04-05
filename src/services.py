@@ -126,10 +126,6 @@ class MakeMessageData(BaseModel):
     # timestamp: int
 
 
-class GroupDoesNotExistError(DomainError):
-    pass
-
-
 class MessageData(BaseModel):
     id: int
     chat_id: int
@@ -151,6 +147,10 @@ class MessageData(BaseModel):
 #         insert(Chat).values(user_ids=user_ids).on_conflict_do_nothing().returning(Chat.id)
 #     )
 #     chat_id = (await session.execute(st)).scalar()
+
+
+class GroupDoesNotExistError(DomainError):
+    status = 404
 
 
 async def message_group(

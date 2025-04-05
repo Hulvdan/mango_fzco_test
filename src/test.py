@@ -1,5 +1,3 @@
-import asyncio
-import json
 from contextlib import asynccontextmanager
 from typing import Callable
 
@@ -29,26 +27,28 @@ def request_as_factory(client_method) -> Callable[[...], Response]:
     return request_as
 
 
-def websocket_as_factory(client_method) -> Callable[[...], WebSocketTestSession]:
-    def request_as(user_id: int, *args, **kwargs):
+class CantReceiveError(Exception):
+    pass
+
+
+def websocket_connect_as_factory(client_method) -> Callable[[...], WebSocketTestSession]:
+    def websocket_connect_as(user_id: int, client_id: str | None, *args, **kwargs):
         headers = kwargs.pop("headers", {})
         headers["Authorization"] = "Bearer {}".format(
-            main.create_access_token(user_id, "test_client_id")
+            main.create_access_token(user_id, client_id)
         )
 
         ws = client_method(*args, **kwargs, headers=headers)
 
-        # С синхронным API по-умолчанию тестировать «отсутствие получения сообщения»
-        # невозможно, т.к. функция начинает бесконечно спать. Прикрутил штуку, что
-        # выкидывает TimeoutError, если никакое сообщение не пришло.
-        async def receive_json_async():
-            result = await asyncio.wait_for(ws._send_rx.receive(), 0.1)  # noqa: SLF001
-            return json.loads(result["text"])
+        def receive_json_non_blocking():
+            if ws._send_rx.statistics().current_buffer_used == 0:  # noqa: SLF001
+                raise CantReceiveError
+            return ws.receive_json()
 
-        ws.receive_json_async = receive_json_async
+        ws.receive_json_non_blocking = receive_json_non_blocking
         return ws
 
-    return request_as
+    return websocket_connect_as
 
 
 client = TestClient(main.app)
@@ -57,7 +57,11 @@ client.post_as = request_as_factory(client.post)
 client.put_as = request_as_factory(client.put)
 client.patch_as = request_as_factory(client.patch)
 client.delete_as = request_as_factory(client.delete)
-client.websocket_connect_as = websocket_as_factory(client.websocket_connect)
+client.websocket_connect_as = websocket_connect_as_factory(client.websocket_connect)
+
+
+def ws(user_id: int, client_id: str | None = "test_client_id"):
+    return client.websocket_connect_as(user_id, client_id, "/ws/")
 
 
 @pytest.fixture
@@ -139,25 +143,38 @@ async def test_group_messaging(session):
     group_123, _ = await make_group_as(user2, [user1, user2, user3])
     group_23, _ = await make_group_as(user2, [user2, user3])
 
-    ws = lambda user_id: client.websocket_connect_as(user_id, "/ws/")
-
     with ws(user1) as ws1, ws(user2) as ws2, ws(user3) as ws3:
         message_group_as(user2, group_123, "1")
-        m1 = await ws1.receive_json_async()
-        m3 = await ws3.receive_json_async()
+        m1 = ws1.receive_json_non_blocking()
+        m3 = ws3.receive_json_non_blocking()
         assert m1["text"] == "1"
         assert m3["text"] == "1"
         # user2 - автор сообщения, не отправляем ему.
-        with pytest.raises(asyncio.TimeoutError):
-            await ws2.receive_json_async()
+        with pytest.raises(CantReceiveError):
+            ws2.receive_json_non_blocking()
 
         message_group_as(user2, group_23, "2")
-        m3 = await ws3.receive_json_async()
+        m3 = ws3.receive_json_non_blocking()
         assert m3["text"] == "2"
-        with pytest.raises(asyncio.TimeoutError):
-            await ws1.receive_json_async()
-        with pytest.raises(asyncio.TimeoutError):
-            await ws2.receive_json_async()
+        with pytest.raises(CantReceiveError):
+            ws1.receive_json_non_blocking()
+        with pytest.raises(CantReceiveError):
+            ws2.receive_json_non_blocking()
+
+
+# «Реализовать механизм подключения к нескольким устройствам одновременно»
+async def test_user_can_connect_using_several_clients(session):
+    user1 = await create_user(session)
+    user2 = await create_user(session)
+
+    group_12, _ = await make_group_as(user2, [user1, user2])
+
+    with ws(user1) as ws1, ws(user1, "another_client") as ws1_another:
+        message_group_as(user2, group_12, "1")
+        m1 = ws1.receive_json_non_blocking()
+        m1_another = ws1_another.receive_json_non_blocking()
+        assert m1["text"] == "1"
+        assert m1_another["text"] == "1"
 
 
 async def test_cant_access_history(session):

@@ -50,7 +50,6 @@ def create_access_token(user_id: int, client_id: str | None) -> str:
 
 UserID: TypeAlias = int
 ClientID: TypeAlias = str | None
-ChatID: TypeAlias = int
 
 
 async def get_user_and_client_id(
@@ -94,7 +93,9 @@ ConnectedUserClient: TypeAlias = tuple[int, ClientID]
 GroupID: TypeAlias = int
 
 
-connected_users: dict[UserID, WebSocket] = {}
+# Пользователи могут подключиться с разных устройств
+# Считаю, что устройство - client_id, который можно указать при логине.
+connected_users: dict[UserID, list[tuple[ClientID, WebSocket]]] = {}
 
 
 @app.post("/message/user/{user_id}")
@@ -125,8 +126,7 @@ async def message_group_endpoint(
         if user_id == user_and_client_id[0]:
             continue
 
-        ws = connected_users.get(user_id)
-        if ws:
+        for _, ws in connected_users.get(user_id, ()):
             task = asyncio.create_task(ws.send_text(message.json()))
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
@@ -167,12 +167,32 @@ async def websocket_endpoint(websocket: WebSocket, authorization: str = Header(.
         await websocket.close()
         return
 
-    user_id = user_and_client_id[0]
+    user_id, client_id = user_and_client_id
 
     try:
         await websocket.accept()
+
+        clients = connected_users.get(user_id)
+        if clients is None:
+            clients = []
+            connected_users[user_id] = clients
+
         # Кешируем подключение, пока не разорвётся соединение.
-        connected_users[user_id] = websocket
+
+        # По-идее тут нужна была бы валидация, что этот пользователь с этим client_id
+        # (устройством) не подключен к нам. Полировать можно бесконечно.
+        clients.append((client_id, websocket))
         await asyncio.Future()
+
     finally:
-        connected_users.pop(user_id, None)
+        # Удаляю подключение без сохранения порядка в массиве,
+        # чтобы не происходили лишние копирования.
+        # Это бы называлось unstable remove / swap remove / remove with swap.
+        clients = connected_users[user_id]
+        for i in range(len(clients)):
+            if clients[i][0] == client_id:
+                clients[i] = clients[-1]
+                clients.pop()
+                if not clients:
+                    del connected_users[user_id]
+                break
