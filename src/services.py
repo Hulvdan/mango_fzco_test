@@ -214,11 +214,9 @@ async def history(
     if not can_access_chat:
         raise UserCantAccessSpecifiedChatError
 
-    statement = select(Message)
+    statement = select(Message).where(Message.chat_id == chat_id)
     if earlier_that_message_id:
-        statement = statement.where(
-            Message.chat_id == chat_id, Message.id.lt_(earlier_that_message_id)
-        )
+        statement = statement.where(Message.id < earlier_that_message_id)
 
     messages = (
         await session.execute(statement.order_by(Message.id.desc()).limit(limit))

@@ -142,7 +142,9 @@ async def message_group_endpoint(
 async def history_endpoint(
     chat_id: int,
     user_and_client_id=Depends(get_user_and_client_id),
-    earlier_that_message_id=Query(0),
+    # Фильтрование по Message.id < X не требует
+    # от БД хождения по страницам, как OFFSET.
+    earlier_that_message_id: int | None = Query(None),
     limit=Query(10, gt=0, le=100),
     session=Depends(db.make_session),
 ) -> list[services.MessageData]:
@@ -153,12 +155,6 @@ async def history_endpoint(
         limit=limit,
         session=session,
     )
-
-
-class MessageData(BaseModel):
-    chat_id: int
-    text: str
-    deduplication_key: str
 
 
 @app.websocket("/ws/")

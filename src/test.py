@@ -60,7 +60,14 @@ async def init_engine_and_sessionmaker():
 
 @pytest.fixture
 async def session():
-    await db.reinit_db_from_scratch()  # Каждый тест с пустой БД.
+    # Каждый тест с пустой БД.
+    #
+    # Сделано на скорую руку. На реальном проекте я бы после каждого теста
+    # TRUNCATE-ил бы все таблицы. Это позволило бы использовать транзакции в тестах.
+    #
+    # Можно было бы просто BEGIN / ROLLBACK на каждый тест ставить,
+    # но на деле этого мне не хватало.
+    await db.reinit_db_from_scratch()
 
     async with asynccontextmanager(db.make_session)() as session:
         yield session
@@ -169,3 +176,12 @@ async def test_history(session):
     assert j[0]["text"] == "3"
     assert j[1]["text"] == "2"
     assert j[2]["text"] == "1"
+
+    response = client.get_as(
+        user, f"history/{chat_id}", params={"earlier_that_message_id": j[0]["id"]}
+    )
+    is_ok(response)
+    j = response.json()
+    assert len(j) == 2
+    assert j[0]["text"] == "2"
+    assert j[1]["text"] == "1"
