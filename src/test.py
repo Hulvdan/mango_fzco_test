@@ -106,7 +106,8 @@ async def make_group_as(user_id: int, participants: list[int]):
         json={"name": "test_group", "participant_user_ids": participants},
     )
     is_ok(response)
-    return response.json()["group_id"]
+    j = response.json()
+    return j["group_id"], j["chat_id"]
 
 
 def message_group_as(user_id: int, group_id: int, text: str):
@@ -123,8 +124,8 @@ async def test_group_messaging(session):
     user2 = await create_user(session)
     user3 = await create_user(session)
 
-    group_123 = await make_group_as(user2, [user1, user2, user3])
-    group_23 = await make_group_as(user2, [user2, user3])
+    group_123, _ = await make_group_as(user2, [user1, user2, user3])
+    group_23, _ = await make_group_as(user2, [user2, user3])
 
     ws = lambda user_id: client.websocket_connect_as(user_id, "/ws/")
 
@@ -145,3 +146,26 @@ async def test_group_messaging(session):
             await ws1.receive_json_async()
         with pytest.raises(asyncio.TimeoutError):
             await ws2.receive_json_async()
+
+
+async def test_cant_access_history(session):
+    user = await create_user(session)
+    response = client.get_as(user, "history/1")
+    assert response.json()["message"] == "UserCantAccessSpecifiedChatError"
+
+
+async def test_history(session):
+    user = await create_user(session)
+    group, chat_id = await make_group_as(user, [user])
+
+    message_group_as(user, group, "1")
+    message_group_as(user, group, "2")
+    message_group_as(user, group, "3")
+
+    response = client.get_as(user, f"history/{chat_id}")
+    is_ok(response)
+
+    j = response.json()
+    assert j[0]["text"] == "3"
+    assert j[1]["text"] == "2"
+    assert j[2]["text"] == "1"

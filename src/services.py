@@ -62,6 +62,11 @@ class MakeGroupSomeParticipantsDontExistError(DomainError):
     status = 404
 
 
+class MakeGroupResponse(BaseModel):
+    group_id: int
+    chat_id: int
+
+
 # В make_group 2 стадии:
 #
 # 1) Проверка существования перечисленных в participant_user_ids пользователей.
@@ -69,7 +74,7 @@ class MakeGroupSomeParticipantsDontExistError(DomainError):
 #
 # Можно разделить session на read_only_session и write_session.
 # Для валидации - ходили бы в реплику. Так мы снизили бы нагрузку на master БД.
-async def make_group(data: MakeGroupData, creator_id: int, session) -> int:
+async def make_group(data: MakeGroupData, creator_id: int, session) -> MakeGroupResponse:
     if creator_id not in data.participant_user_ids:
         data.participant_user_ids.append(creator_id)
 
@@ -106,7 +111,10 @@ async def make_group(data: MakeGroupData, creator_id: int, session) -> int:
     )
     await session.commit()
 
-    return group.id
+    return MakeGroupResponse(
+        group_id=group.id,
+        chat_id=group.chat_id,
+    )
 
 
 class MakeMessageData(BaseModel):
@@ -188,24 +196,45 @@ async def message_group(
     )
 
 
-# async def history(
-#     *, chat_id: int, user_id: int, earlier_that_message_id: int, limit: int, session
-# ) -> list[MessageData]:
-#     # * check user can access this chat
-#     #   * he is a participant in GROUP
-#     #   * he is one of two people chatting
-#     #
-#     #
-#     #
-#     messages = await session.execute(
-#         select(Message)
-#         .where(Message.chat_id == chat_id, Message.id.lt_(earlier_that_message_id))
-#         .order_by(Message.id.desc_)
-#         .limit(limit)
-#     )
+class UserCantAccessSpecifiedChatError(DomainError):
+    status = 403
 
 
-# async def list_chats_of(user_id: int, session) -> list[int]:
+async def history(
+    *, chat_id: int, user_id: int, earlier_that_message_id: int, limit: int, session
+) -> list[MessageData]:
+    can_access_chat = (
+        await session.execute(
+            select(ChatParticipant)
+            .where(ChatParticipant.chat_id == chat_id)
+            .where(ChatParticipant.user_id == user_id)
+            .limit(1)
+        )
+    ).scalar()
+    if not can_access_chat:
+        raise UserCantAccessSpecifiedChatError
+
+    statement = select(Message)
+    if earlier_that_message_id:
+        statement = statement.where(
+            Message.chat_id == chat_id, Message.id.lt_(earlier_that_message_id)
+        )
+
+    messages = (
+        await session.execute(statement.order_by(Message.id.desc()).limit(limit))
+    ).scalars()
+    return [
+        MessageData(
+            id=i.id,
+            chat_id=i.chat_id,
+            sender_id=i.sender_id,
+            text=i.text,
+            timestamp=i.timestamp,
+            # TODO
+            is_read=False,
+        )
+        for i in messages
+    ]
 
 
 async def fill_db_with_initial_data():

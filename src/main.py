@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated, TypeAlias
 
 import jwt
-from fastapi import Depends, FastAPI, Header, Path, WebSocket
+from fastapi import Depends, FastAPI, Header, Path, Query, WebSocket
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.security.utils import get_authorization_scheme_param
 from pydantic import BaseModel
@@ -81,18 +81,13 @@ async def token_endpoint(
     return Token(access_token=token)
 
 
-class MakeGroupResponse(BaseModel):
-    group_id: int
-
-
 @app.post("/group/", status_code=201)
 async def make_group_endpoint(
     body: services.MakeGroupData,
     user_and_client_id=Depends(get_user_and_client_id),
     session=Depends(db.make_session),
-) -> MakeGroupResponse:
-    group_id = await services.make_group(body, user_and_client_id[0], session)
-    return MakeGroupResponse(group_id=group_id)
+) -> services.MakeGroupResponse:
+    return await services.make_group(body, user_and_client_id[0], session)
 
 
 ConnectedUserClient: TypeAlias = tuple[int, ClientID]
@@ -143,21 +138,21 @@ async def message_group_endpoint(
     return message
 
 
-# @app.get("/history/{chat_id}")
-# async def history_endpoint(
-#     chat_id: int,
-#     user_id=Depends(get_user_and_client_id),
-#     earlier_that_message_id=Query(0),
-#     limit=Query(0, gt=0, le=100),
-#     session=Depends(db.make_session),
-# ) -> list[services.MessageData]:
-#     return await services.history(
-#         chat_id=chat_id,
-#         user_id=user_id,
-#         earlier_that_message_id=earlier_that_message_id,
-#         limit=limit,
-#         session=session,
-#     )
+@app.get("/history/{chat_id}")
+async def history_endpoint(
+    chat_id: int,
+    user_and_client_id=Depends(get_user_and_client_id),
+    earlier_that_message_id=Query(0),
+    limit=Query(10, gt=0, le=100),
+    session=Depends(db.make_session),
+) -> list[services.MessageData]:
+    return await services.history(
+        chat_id=chat_id,
+        user_id=user_and_client_id[0],
+        earlier_that_message_id=earlier_that_message_id,
+        limit=limit,
+        session=session,
+    )
 
 
 class MessageData(BaseModel):
