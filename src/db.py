@@ -39,7 +39,7 @@ class Chat(_Table):
     TYPE_GROUP = 1
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    type = Column(SmallInteger)
+    type = Column(SmallInteger, nullable=False)
 
     # Если это чат пользователей,
     # здесь будет user1_id << 32 + user2_id (user1_id, user2_id отсортированы).
@@ -83,7 +83,7 @@ class Message(_Table):
     sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     text = Column(Text, nullable=False)
     timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
-    is_read = Column(Boolean, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False)
 
     __table_args__ = (Index("ix_chat_id", "chat_id"),)
 

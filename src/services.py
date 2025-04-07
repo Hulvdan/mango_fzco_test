@@ -140,18 +140,43 @@ class MessageData(BaseModel):
     is_read: bool
 
 
-# async def message_user():
-#     # см. Chat.user_ids
-#     user1 = sender_id
-#     user2 = data.entity_id
-#     if user2 < user1:
-#         user1, user2 = user2, user1
-#     user_ids = user1 << 32 + user2
-#
-#     st = (
-#         insert(Chat).values(user_ids=user_ids).on_conflict_do_nothing().returning(Chat.id)
-#     )
-#     chat_id = (await session.execute(st)).scalar()
+async def message_user(
+    *, data: MakeMessageData, sender_id: int, user_id: int, session
+) -> MessageData:
+    # см. Chat.user_ids
+    user1 = sender_id
+    user2 = data.entity_id
+    if user2 < user1:
+        user1, user2 = user2, user1
+    user_ids = user1 << 32 + user2
+
+    existing_chat = (
+        await session.execute(select(Chat).where(Chat.user_ids == user_ids))
+    ).scalar()
+
+    if not existing_chat:
+        existing_chat = Chat(type=Chat.TYPE_PERSONAL)
+        session.add(existing_chat)
+        session.flush()
+
+    message = Message(
+        chat_id=existing_chat.id,
+        sender_id=sender_id,
+        text=data.text,
+    )
+    session.flush()
+
+    session.add(Unread(message_id=message.id, user_id=user_id))
+    await session.commit()
+
+    return MessageData(
+        id=message.id,
+        chat_id=message.chat_id,
+        sender_id=message.sender_id,
+        text=message.text,
+        timestamp=message.timestamp,
+        is_read=message.is_read,
+    )
 
 
 class GroupDoesNotExistError(DomainError):
@@ -172,7 +197,6 @@ async def message_group(
         chat_id=chat_id,
         sender_id=sender_id,
         text=data.text,
-        is_read=False,
     )
     session.add(message)
 

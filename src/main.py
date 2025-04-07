@@ -99,12 +99,22 @@ async def make_group_endpoint(
     return await services.make_group(body, user_and_client_id[0], session)
 
 
-ConnectedUserClient: TypeAlias = tuple[int, ClientID]
-
-
 # Пользователи могут подключиться с разных устройств
 # Считаю, что устройство - client_id, который можно указать при логине.
 chat_connections: dict[ChatID, list[tuple[UserID, ClientID, WebSocket]]] = {}
+
+
+background_tasks = set()
+
+
+def enqueue_websocket_message(message: services.MessageData, sender_id: int) -> None:
+    for user_id, _, ws in chat_connections.get(message.chat_id, ()):
+        if user_id == sender_id:
+            continue
+
+        task = asyncio.create_task(ws.send_text(WSMessage(message=message.dict()).json()))
+        background_tasks.add(task)
+        task.add_done_callback(background_tasks.discard)
 
 
 @app.post("/messages/user/{user_id}")
@@ -113,11 +123,13 @@ async def message_user_endpoint(
     user_id: Annotated[int, Path()],
     user_and_client_id=Depends(get_user_and_client_id),
     session=Depends(db.make_session),
-) -> None:
-    pass
+) -> services.MessageData:
+    message = await services.message_user(
+        data=data, sender_id=user_and_client_id[0], user_id=user_id, session=session
+    )
 
-
-background_tasks = set()
+    enqueue_websocket_message(message, user_and_client_id[0])
+    return message
 
 
 @app.post("/messages/group/{group_id}")
@@ -131,14 +143,7 @@ async def message_group_endpoint(
         data=data, sender_id=user_and_client_id[0], group_id=group_id, session=session
     )
 
-    for user_id, _, ws in chat_connections.get(message.chat_id, ()):
-        if user_id != user_and_client_id[0]:
-            task = asyncio.create_task(
-                ws.send_text(WSMessage(message=message.dict()).json())
-            )
-            background_tasks.add(task)
-            task.add_done_callback(background_tasks.discard)
-
+    enqueue_websocket_message(message, user_and_client_id[0])
     return message
 
 
