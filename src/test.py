@@ -130,10 +130,11 @@ async def make_group_as(user_id: int, participants: list[int]):
 def message_group_as(user_id: int, group_id: int, text: str):
     response = client.post_as(
         user_id,
-        f"message/group/{group_id}",
+        f"messages/group/{group_id}",
         json={"text": text},
     )
     is_ok(response)
+    return response.json()
 
 
 async def test_group_messaging(session):
@@ -166,6 +167,31 @@ async def test_group_messaging(session):
         assert m3["text"] == "2"
         with pytest.raises(CantReceiveError):
             ws2.receive_json_non_blocking()
+
+
+async def test_read(session):
+    user1 = await create_user(session)
+    user2 = await create_user(session)
+
+    group, chat = await make_group_as(user2, [user1, user2])
+    message_response = message_group_as(user1, group, "1")
+
+    response = client.get_as(user2, f"history/{chat}")
+    assert response.json()[0]["is_read"] is False
+
+    with ws(user1, chat) as ws1:
+        read_response = client.post_as(
+            user2, "messages/read/{}".format(message_response["id"])
+        )
+        is_ok(read_response)
+
+        response = client.get_as(user2, f"history/{chat}")
+        assert response.json()[0]["is_read"] is True
+
+        # Автор получает отбивку о том, что его сообщение прочитали
+        m = ws1.receive_json_non_blocking()
+        assert m["type"] == "Read"
+        assert m["message_id"] == message_response["id"]
 
 
 # «Реализовать механизм подключения к нескольким устройствам одновременно»

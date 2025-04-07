@@ -12,7 +12,20 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from . import db, services, utils
+from .services import ChatID, UserID
 from .settings import settings
+
+ClientID: TypeAlias = str | None
+
+
+class WSMessage(BaseModel):
+    type: str = "Message"
+    message: dict
+
+
+class WSRead(BaseModel):
+    type: str = "Read"
+    message_id: int
 
 
 # Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же.
@@ -20,6 +33,7 @@ from .settings import settings
 async def app_lifespan(_):
     db.init_engine_and_sessionmaker()
     await services.fill_db_with_initial_data()
+
     yield
 
 
@@ -46,10 +60,6 @@ def create_access_token(user_id: int, client_id: str | None) -> str:
         settings.service_secret,
         algorithm=JWT_ALGORITHM,
     )
-
-
-UserID: TypeAlias = int
-ClientID: TypeAlias = str | None
 
 
 async def get_user_and_client_id(
@@ -90,8 +100,6 @@ async def make_group_endpoint(
 
 
 ConnectedUserClient: TypeAlias = tuple[int, ClientID]
-GroupID: TypeAlias = int
-ChatID: TypeAlias = int
 
 
 # Пользователи могут подключиться с разных устройств
@@ -99,7 +107,7 @@ ChatID: TypeAlias = int
 chat_connections: dict[ChatID, list[tuple[UserID, ClientID, WebSocket]]] = {}
 
 
-@app.post("/message/user/{user_id}")
+@app.post("/messages/user/{user_id}")
 async def message_user_endpoint(
     data: services.MakeMessageData,
     user_id: Annotated[int, Path()],
@@ -112,7 +120,7 @@ async def message_user_endpoint(
 background_tasks = set()
 
 
-@app.post("/message/group/{group_id}")
+@app.post("/messages/group/{group_id}")
 async def message_group_endpoint(
     data: services.MakeMessageData,
     group_id: Annotated[int, Path()],
@@ -130,6 +138,34 @@ async def message_group_endpoint(
             task.add_done_callback(background_tasks.discard)
 
     return message
+
+
+class EmptyResponse(BaseModel):
+    pass
+
+
+@app.post("/messages/read/{message_id}")
+async def read_endpoint(
+    message_id: int,
+    user_and_client_id=Depends(get_user_and_client_id),
+    session=Depends(db.make_session),
+) -> EmptyResponse:
+    fully_read_message_data = await services.read_message(
+        message_id=message_id, user_id=user_and_client_id[0], session=session
+    )
+
+    if fully_read_message_data:
+        sender_id, chat_id = fully_read_message_data
+
+        for user_id, _, ws in chat_connections.get(chat_id, ()):
+            if user_id != sender_id:
+                continue
+
+            task = asyncio.create_task(ws.send_text(WSRead(message_id=message_id).json()))
+            background_tasks.add(task)
+            task.add_done_callback(background_tasks.discard)
+
+    return EmptyResponse()
 
 
 @app.get("/history/{chat_id}")

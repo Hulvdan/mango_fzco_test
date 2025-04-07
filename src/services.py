@@ -1,11 +1,16 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import TypeAlias
 
 from passlib.context import CryptContext
 from pydantic import BaseModel
 from sqlalchemy import exists, func, select
 
-from .db import Chat, ChatParticipant, Group, Message, User
+from .db import Chat, ChatParticipant, Group, Message, Unread, User
+
+UserID: TypeAlias = int
+MessageID: TypeAlias = str | None
+ChatID: TypeAlias = int
 
 _password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -155,7 +160,7 @@ class GroupDoesNotExistError(DomainError):
 
 async def message_group(
     *, data: MakeMessageData, sender_id: int, group_id: int, session
-) -> tuple[MessageData, list[int]]:
+) -> MessageData:
     chat_id = (
         await session.execute(select(Group.chat_id).filter(Group.id == group_id))
     ).scalar()
@@ -167,8 +172,24 @@ async def message_group(
         chat_id=chat_id,
         sender_id=sender_id,
         text=data.text,
+        is_read=False,
     )
     session.add(message)
+
+    await session.flush()
+
+    readers = (
+        await session.execute(
+            select(ChatParticipant.user_id).where(ChatParticipant.chat_id == chat_id)
+        )
+    ).scalars()
+
+    session.add_all(
+        Unread(message_id=message.id, user_id=user_id)
+        for user_id in readers
+        if user_id != sender_id
+    )
+
     await session.commit()
 
     return MessageData(
@@ -177,8 +198,44 @@ async def message_group(
         sender_id=message.sender_id,
         text=message.text,
         timestamp=message.timestamp,
-        is_read=False,
+        is_read=message.is_read,
     )
+
+
+ReadMessageData: TypeAlias = tuple[ChatID, UserID]
+
+
+async def read_message(message_id: int, user_id: int, session) -> ReadMessageData | None:
+    unread = (
+        await session.execute(
+            select(Unread)
+            .where(Unread.message_id == message_id, Unread.user_id == user_id)
+            .limit(1)
+        )
+    ).scalar()
+    if not unread:
+        return None
+
+    await session.delete(unread)
+    await session.flush()
+
+    st = select(exists().select_from(Unread).where(Unread.message_id == message_id))
+    is_read = not (await session.execute(st)).scalar()
+
+    return_value: ReadMessageData | None = None
+
+    if is_read:
+        message = (
+            await session.execute(select(Message).where(Message.id == message_id))
+        ).scalar()
+        message.is_read = True
+        session.add(message)
+
+        return_value = (message.chat_id, message.sender_id)
+
+    await session.commit()
+
+    return return_value
 
 
 class UserCantAccessSpecifiedChatError(DomainError):
@@ -210,8 +267,10 @@ async def history(
     # Не совсем понимаю, почему «по возрастанию». В телеграмме я по-идее бы делал так,
     # чтобы выводились сперва самые новые сообщения. А историю мы бы крутили вспять.
     messages = (
-        await session.execute(statement.order_by(Message.id.asc()).limit(limit))
-    ).scalars()
+        (await session.execute(statement.order_by(Message.id.asc()).limit(limit)))
+        .scalars()
+        .all()
+    )
 
     return [
         MessageData(
@@ -220,8 +279,7 @@ async def history(
             sender_id=i.sender_id,
             text=i.text,
             timestamp=i.timestamp,
-            # TODO
-            is_read=False,
+            is_read=i.is_read,
         )
         for i in messages
     ]

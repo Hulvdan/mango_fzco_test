@@ -5,6 +5,7 @@ import sqlalchemy as sa
 from sqlalchemy import (
     CHAR,
     BigInteger,
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -63,27 +64,37 @@ class Group(_Table):
 
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = String(50)
-    creator_id = Column(Integer, ForeignKey("users.id"))
-    chat_id = Column(Integer, ForeignKey("chats.id"))
+    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    chat_id = Column(Integer, ForeignKey("chats.id"), nullable=False)
 
 
 class ChatParticipant(_Table):
     __tablename__ = "chat_participants"
 
-    chat_id = Column(Integer, ForeignKey("chats.id"), primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    chat_id = Column(Integer, ForeignKey("chats.id"), primary_key=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, nullable=False)
 
 
 class Message(_Table):
     __tablename__ = "messages"
 
     id = Column(Integer, autoincrement=True, primary_key=True)
-    chat_id = Column(Integer, ForeignKey("chats.id"))
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    text = Column(Text)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    chat_id = Column(Integer, ForeignKey("chats.id"), nullable=False)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    text = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    is_read = Column(Boolean, nullable=False)
 
     __table_args__ = (Index("ix_chat_id", "chat_id"),)
+
+
+class Unread(_Table):
+    __tablename__ = "unread"
+
+    message_id = Column(
+        Integer, ForeignKey("messages.id"), primary_key=True, nullable=False
+    )
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, nullable=False)
 
 
 _engine = None
