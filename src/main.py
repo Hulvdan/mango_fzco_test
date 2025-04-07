@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from . import db, services
+from . import db, services, utils
 from .settings import settings
 
 
@@ -91,11 +91,12 @@ async def make_group_endpoint(
 
 ConnectedUserClient: TypeAlias = tuple[int, ClientID]
 GroupID: TypeAlias = int
+ChatID: TypeAlias = int
 
 
 # Пользователи могут подключиться с разных устройств
 # Считаю, что устройство - client_id, который можно указать при логине.
-connected_users: dict[UserID, list[tuple[ClientID, WebSocket]]] = {}
+chat_connections: dict[ChatID, list[tuple[UserID, ClientID, WebSocket]]] = {}
 
 
 @app.post("/message/user/{user_id}")
@@ -118,15 +119,12 @@ async def message_group_endpoint(
     user_and_client_id=Depends(get_user_and_client_id),
     session=Depends(db.make_session),
 ) -> services.MessageData:
-    message, users_that_could_see = await services.message_group(
+    message = await services.message_group(
         data=data, sender_id=user_and_client_id[0], group_id=group_id, session=session
     )
 
-    for user_id in users_that_could_see:
-        if user_id == user_and_client_id[0]:
-            continue
-
-        for _, ws in connected_users.get(user_id, ()):
+    for user_id, _, ws in chat_connections.get(message.chat_id, ()):
+        if user_id != user_and_client_id[0]:
             task = asyncio.create_task(ws.send_text(message.json()))
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
@@ -154,8 +152,10 @@ async def history_endpoint(
     )
 
 
-@app.websocket("/ws/")
-async def websocket_endpoint(websocket: WebSocket, authorization: str = Header(...)):
+@app.websocket("/ws/{chat_id}/")
+async def websocket_endpoint(
+    websocket: WebSocket, chat_id: int, authorization: str = Header(...)
+):
     scheme, param = get_authorization_scheme_param(authorization)
     if not authorization or scheme.lower() != "bearer":
         await websocket.close()
@@ -169,30 +169,35 @@ async def websocket_endpoint(websocket: WebSocket, authorization: str = Header(.
 
     user_id, client_id = user_and_client_id
 
+    async with asynccontextmanager(db.make_session)() as session:
+        if not await services.can_access_to_chat(
+            chat_id=chat_id, user_id=user_id, session=session
+        ):
+            await websocket.close()
+            return
+
     try:
         await websocket.accept()
 
-        clients = connected_users.get(user_id)
-        if clients is None:
-            clients = []
-            connected_users[user_id] = clients
+        connections = chat_connections.get(chat_id)
+        if connections is None:
+            connections = []
+            chat_connections[chat_id] = connections
 
         # Кешируем подключение, пока не разорвётся соединение.
 
         # По-идее тут нужна была бы валидация, что этот пользователь с этим client_id
         # (устройством) не подключен к нам. Полировать можно бесконечно.
-        clients.append((client_id, websocket))
+        connections.append((user_id, client_id, websocket))
         await asyncio.Future()
 
     finally:
-        # Удаляю подключение без сохранения порядка в массиве,
-        # чтобы не происходили лишние копирования.
-        # Это бы называлось unstable remove / swap remove / remove with swap.
-        clients = connected_users[user_id]
-        for i in range(len(clients)):
-            if clients[i][0] == client_id:
-                clients[i] = clients[-1]
-                clients.pop()
-                if not clients:
-                    del connected_users[user_id]
+        connections = chat_connections[chat_id]
+
+        for i in range(len(connections)):
+            if connections[i][0] == user_id and connections[i][1] == client_id:
+                utils.list_pop_swap(connections, i)
+
+                if not connections:
+                    del chat_connections[chat_id]
                 break

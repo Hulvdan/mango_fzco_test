@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from httpx import Response
 from sqlalchemy import NullPool
 from starlette.testclient import WebSocketTestSession
+from starlette.websockets import WebSocketDisconnect
 
 from . import db, main, services
 
@@ -60,8 +61,8 @@ client.delete_as = request_as_factory(client.delete)
 client.websocket_connect_as = websocket_connect_as_factory(client.websocket_connect)
 
 
-def ws(user_id: int, client_id: str | None = "test_client_id"):
-    return client.websocket_connect_as(user_id, client_id, "/ws/")
+def ws(user_id: int, chat_id: int, *, client_id: str | None = "test_client_id"):
+    return client.websocket_connect_as(user_id, client_id, f"/ws/{chat_id}/")
 
 
 @pytest.fixture
@@ -140,10 +141,12 @@ async def test_group_messaging(session):
     user2 = await create_user(session)
     user3 = await create_user(session)
 
-    group_123, _ = await make_group_as(user2, [user1, user2, user3])
-    group_23, _ = await make_group_as(user2, [user2, user3])
+    group_123, chat_123 = await make_group_as(user2, [user1, user2, user3])
+    group_23, chat_23 = await make_group_as(user2, [user2, user3])
 
-    with ws(user1) as ws1, ws(user2) as ws2, ws(user3) as ws3:
+    with ws(user1, chat_123) as ws1, ws(user2, chat_123) as ws2, ws(
+        user3, chat_123
+    ) as ws3:
         message_group_as(user2, group_123, "1")
         m1 = ws1.receive_json_non_blocking()
         m3 = ws3.receive_json_non_blocking()
@@ -153,11 +156,14 @@ async def test_group_messaging(session):
         with pytest.raises(CantReceiveError):
             ws2.receive_json_non_blocking()
 
+    with pytest.raises(WebSocketDisconnect):
+        with ws(user1, chat_23):
+            pass
+
+    with ws(user2, chat_23) as ws2, ws(user3, chat_23) as ws3:
         message_group_as(user2, group_23, "2")
         m3 = ws3.receive_json_non_blocking()
         assert m3["text"] == "2"
-        with pytest.raises(CantReceiveError):
-            ws1.receive_json_non_blocking()
         with pytest.raises(CantReceiveError):
             ws2.receive_json_non_blocking()
 
@@ -167,9 +173,11 @@ async def test_user_can_connect_using_several_clients(session):
     user1 = await create_user(session)
     user2 = await create_user(session)
 
-    group_12, _ = await make_group_as(user2, [user1, user2])
+    group_12, chat_12 = await make_group_as(user2, [user1, user2])
 
-    with ws(user1) as ws1, ws(user1, "another_client") as ws1_another:
+    with ws(user1, chat_12) as ws1, ws(
+        user1, chat_12, client_id="another_client"
+    ) as ws1_another:
         message_group_as(user2, group_12, "1")
         m1 = ws1.receive_json_non_blocking()
         m1_another = ws1_another.receive_json_non_blocking()

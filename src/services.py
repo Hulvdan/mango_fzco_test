@@ -3,7 +3,7 @@ from datetime import datetime
 
 from passlib.context import CryptContext
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 
 from .db import Chat, ChatParticipant, Group, Message, User
 
@@ -171,28 +171,13 @@ async def message_group(
     session.add(message)
     await session.commit()
 
-    users_that_could_see = (
-        (
-            await session.execute(
-                select(ChatParticipant.user_id)
-                .select_from(ChatParticipant)
-                .where(ChatParticipant.chat_id == chat_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-
-    return (
-        MessageData(
-            id=message.id,
-            chat_id=message.chat_id,
-            sender_id=message.sender_id,
-            text=message.text,
-            timestamp=message.timestamp,
-            is_read=False,
-        ),
-        users_that_could_see,
+    return MessageData(
+        id=message.id,
+        chat_id=message.chat_id,
+        sender_id=message.sender_id,
+        text=message.text,
+        timestamp=message.timestamp,
+        is_read=False,
     )
 
 
@@ -240,6 +225,16 @@ async def history(
         )
         for i in messages
     ]
+
+
+async def can_access_to_chat(*, chat_id: int, user_id: int, session) -> bool:
+    return (
+        await session.execute(
+            select(exists().select_from(ChatParticipant)).where(
+                ChatParticipant.chat_id == chat_id, ChatParticipant.user_id == user_id
+            )
+        )
+    ).scalar()
 
 
 async def fill_db_with_initial_data():
