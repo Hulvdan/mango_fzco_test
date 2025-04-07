@@ -149,13 +149,13 @@ async def test_group_messaging(session):
         user3, chat_123
     ) as ws3:
         message_group_as(user2, group_123, "1")
-        m1 = ws1.receive_json_non_blocking()
-        m3 = ws3.receive_json_non_blocking()
+        m1 = ws1.receive_json_non_blocking()["message"]
+        m3 = ws3.receive_json_non_blocking()["message"]
         assert m1["text"] == "1"
         assert m3["text"] == "1"
         # user2 - автор сообщения, не отправляем ему.
         with pytest.raises(CantReceiveError):
-            ws2.receive_json_non_blocking()
+            ws2.receive_json_non_blocking()["message"]
 
     with pytest.raises(WebSocketDisconnect):
         with ws(user1, chat_23):
@@ -163,10 +163,10 @@ async def test_group_messaging(session):
 
     with ws(user2, chat_23) as ws2, ws(user3, chat_23) as ws3:
         message_group_as(user2, group_23, "2")
-        m3 = ws3.receive_json_non_blocking()
+        m3 = ws3.receive_json_non_blocking()["message"]
         assert m3["text"] == "2"
         with pytest.raises(CantReceiveError):
-            ws2.receive_json_non_blocking()
+            ws2.receive_json_non_blocking()["message"]
 
 
 async def test_read(session):
@@ -205,8 +205,8 @@ async def test_user_can_connect_using_several_clients(session):
         user1, chat_12, client_id="another_client"
     ) as ws1_another:
         message_group_as(user2, group_12, "1")
-        m1 = ws1.receive_json_non_blocking()
-        m1_another = ws1_another.receive_json_non_blocking()
+        m1 = ws1.receive_json_non_blocking()["message"]
+        m1_another = ws1_another.receive_json_non_blocking()["message"]
         assert m1["text"] == "1"
         assert m1_another["text"] == "1"
 

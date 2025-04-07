@@ -18,14 +18,14 @@ from .settings import settings
 ClientID: TypeAlias = str | None
 
 
-class WSMessage(BaseModel):
-    type: str = "Message"
-    message: dict
-
-
 class WSRead(BaseModel):
     type: str = "Read"
     message_id: int
+
+
+class WSMessage(BaseModel):
+    type: str = "Message"
+    message: dict
 
 
 # Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же.
@@ -133,7 +133,9 @@ async def message_group_endpoint(
 
     for user_id, _, ws in chat_connections.get(message.chat_id, ()):
         if user_id != user_and_client_id[0]:
-            task = asyncio.create_task(ws.send_text(message.json()))
+            task = asyncio.create_task(
+                ws.send_text(WSMessage(message=message.dict()).json())
+            )
             background_tasks.add(task)
             task.add_done_callback(background_tasks.discard)
 
