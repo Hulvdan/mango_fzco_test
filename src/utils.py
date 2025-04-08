@@ -1,5 +1,11 @@
+import logging
+
 INT16_MAX = int("7FFF", 16)
 INT16_MIN = int("-8000", 16)
+
+
+log = logging.getLogger()
+logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 
 
 def list_pop_swap(list_, i):

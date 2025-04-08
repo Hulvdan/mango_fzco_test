@@ -16,6 +16,7 @@ from .db import (
     Unread,
     User,
 )
+from .utils import log
 
 UserID: TypeAlias = int
 MessageID: TypeAlias = str | None
@@ -48,9 +49,11 @@ class LoginData(BaseModel):
 async def login(data: LoginData, session) -> int:
     user = (await session.execute(select(User).where(User.email == data.email))).scalar()
     if user is None:
+        log.info("User with `%s` email doesn't exist!", data.email)
         raise UserDoesNotExistError
 
     if not _password_context.verify(data.password, user.password):
+        log.info("User with `%s` email provided a wrong password!", data.email)
         raise WrongPasswordError
 
     return user.id
@@ -96,6 +99,7 @@ async def make_group(data: MakeGroupData, creator_id: int, session) -> MakeGroup
     # больше 100 участников бы добавлял.
     # Я бы потом добавил функцию добавления ещё участников.
     if len(data.participant_user_ids) > 100:
+        log.info("User %d supplied too many participants for group creation!", creator_id)
         raise MakeGroupTooManyParticipantsError
 
     existing_users_count = (
@@ -109,6 +113,9 @@ async def make_group(data: MakeGroupData, creator_id: int, session) -> MakeGroup
     # Считаем, что клиент не прав, если пытается
     # добавлять несуществующих участников.
     if existing_users_count != len(data.participant_user_ids):
+        log.info(
+            "User %d supplied non existent participants for group creation!", creator_id
+        )
         raise MakeGroupSomeParticipantsDontExistError
 
     chat = Chat(type=Chat.TYPE_GROUP)
@@ -167,17 +174,20 @@ async def check_not_duplicated(sender_id: int, operation_id: int, session) -> No
         )
     )
     if (await session.execute(st)).scalar():
+        log.info(
+            "User %d have recently committed an operation %d", sender_id, operation_id
+        )
         raise OperationAlreadySucceededError
 
 
 async def message_user(
-    *, data: MakeMessageData, sender_id: int, user_id: int, session
+    *, data: MakeMessageData, sender_id: int, receiver_id: int, session
 ) -> MessageData:
     await check_not_duplicated(sender_id, data.operation_id, session)
 
     # см. Chat.user_ids
     user1 = sender_id
-    user2 = data.entity_id
+    user2 = receiver_id
     if user2 < user1:
         user1, user2 = user2, user1
     user_ids = user1 << 32 + user2
@@ -187,7 +197,8 @@ async def message_user(
     ).scalar()
 
     if not existing_chat:
-        existing_chat = Chat(type=Chat.TYPE_PERSONAL)
+        log.info("Creating a chat for users %d and %d...", sender_id, receiver_id)
+        existing_chat = Chat(type=Chat.TYPE_PERSONAL, user_ids=user_ids)
         session.add(existing_chat)
         await session.flush()
 
@@ -205,7 +216,7 @@ async def message_user(
 
     await session.flush()
 
-    session.add(Unread(message_id=message.id, user_id=user_id))
+    session.add(Unread(message_id=message.id, user_id=receiver_id))
     await session.commit()
 
     return MessageData(
@@ -232,6 +243,7 @@ async def message_group(
     ).scalar()
 
     if chat_id is None:
+        log.info("Group %d does not exist", group_id)
         raise GroupDoesNotExistError
 
     message = Message(
@@ -315,15 +327,12 @@ class UserCantAccessSpecifiedChatError(DomainError):
 async def history(
     *, chat_id: int, user_id: int, later_that_message_id: int, limit: int, session
 ) -> list[MessageData]:
-    can_access_chat = (
-        await session.execute(
-            select(ChatParticipant)
-            .where(ChatParticipant.chat_id == chat_id)
-            .where(ChatParticipant.user_id == user_id)
-            .limit(1)
+    if not await can_access_chat(chat_id=chat_id, user_id=user_id, session=session):
+        log.info(
+            "User %d tried accessing chat %d that he is not a participant of!",
+            user_id,
+            chat_id,
         )
-    ).scalar()
-    if not can_access_chat:
         raise UserCantAccessSpecifiedChatError
 
     statement = select(Message).where(Message.chat_id == chat_id)
@@ -355,7 +364,7 @@ async def history(
     ]
 
 
-async def can_access_to_chat(*, chat_id: int, user_id: int, session) -> bool:
+async def can_access_chat(*, chat_id: int, user_id: int, session) -> bool:
     return (
         await session.execute(
             select(exists().select_from(ChatParticipant)).where(
@@ -366,14 +375,20 @@ async def can_access_to_chat(*, chat_id: int, user_id: int, session) -> bool:
 
 
 async def purge_old_message_operations(session) -> None:
+    log.info("Purging old message operations...")
+
     st = delete(RecentlySucceededOperation).where(
         RecentlySucceededOperation.timestamp < datetime.utcnow()  # noqa: DTZ003
     )
     await session.execute(st)
 
+    log.info("Purged old message operations!")
+
 
 async def fill_db_with_initial_data():
     from .db import make_session, reinit_db_from_scratch
+
+    log.info("Filling db with with initial data...")
 
     await reinit_db_from_scratch()
 
@@ -385,3 +400,5 @@ async def fill_db_with_initial_data():
                 password="test",
                 session=session,
             )
+
+    log.info("Filled db with with initial data!")

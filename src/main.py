@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse
 from . import db, services, utils
 from .services import ChatID, UserID
 from .settings import settings
+from .utils import log
 
 ClientID: TypeAlias = str | None
 
@@ -28,7 +29,7 @@ class WSMessage(BaseModel):
     message: dict
 
 
-# Каждые 5 минут очищаем таблицу для убирания
+# Каждые 5 минут очищаем старые записи в таблице для убирания
 # дублирования одновременно отправляемых сообщений на несколько сервисов.
 async def infinitely_purge_old_message_operations(session):
     while True:
@@ -138,7 +139,7 @@ async def message_user_endpoint(
     session=Depends(db.make_session),
 ) -> services.MessageData:
     message = await services.message_user(
-        data=data, sender_id=user_and_client_id[0], user_id=user_id, session=session
+        data=data, sender_id=user_and_client_id[0], receiver_id=user_id, session=session
     )
 
     enqueue_websocket_message(message, user_and_client_id[0])
@@ -175,6 +176,7 @@ async def read_endpoint(
     )
 
     if fully_read_message_data:
+        log.info("Message was fully read! Notifying it's sender...")
         sender_id, chat_id = fully_read_message_data
 
         for user_id, _, ws in chat_connections.get(chat_id, ()):
@@ -214,21 +216,24 @@ async def websocket_endpoint(
 ):
     scheme, param = get_authorization_scheme_param(authorization)
     if not authorization or scheme.lower() != "bearer":
+        log.info("User didn't provide proper authorization credentials!")
         await websocket.close()
         return
 
     try:
         user_and_client_id = await get_user_and_client_id(param)
     except services.DomainError:
+        log.info("User provided invalid authorization credentials: %s", param)
         await websocket.close()
         return
 
     user_id, client_id = user_and_client_id
 
     async with asynccontextmanager(db.make_session)() as session:
-        if not await services.can_access_to_chat(
+        if not await services.can_access_chat(
             chat_id=chat_id, user_id=user_id, session=session
         ):
+            log.info("User %d tried accessing chat that he can't use!", user_id)
             await websocket.close()
             return
 

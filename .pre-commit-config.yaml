@@ -15,7 +15,7 @@ repos:
     hooks:
       - id: lint
         name: lint
-        entry: poetry run ruff check src --fix
+        entry: poetry run ruff check src
         pass_filenames: false
         types: [python]
         language: system
@@ -28,17 +28,15 @@ repos:
         types: [python]
         language: system
 
-      # - id: test
-      #   name: test
-      #   entry: poetry run pytest
-      #   pass_filenames: false
-      #   types: [python]
-      #   language: system
+      - id: test
+        name: test
+        entry: poetry run pytest
+        pass_filenames: false
+        types: [python]
+        language: system
 
-  # Использовать poetry в docker - долго.
-  # `pip install -r requirements.txt` отрабатывает быстро + не нагромождает лишним.
-  # Экспортируется с хешами для безопасности.
-  # Без локальных инструментов разработки вроде форматтеров и линтеров.
+  # Не устанавливаю poetry в docker. Вместо этого - экспортирую requirements.txt
+  # с хешами, без инструментов разработки вроде линтеров и форматтеров.
   - repo: https://github.com/python-poetry/poetry-plugin-export
     rev: 1.9.0
     hooks:
