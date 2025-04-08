@@ -1,3 +1,7 @@
+INT16_MAX = int("7FFF", 16)
+INT16_MIN = int("-8000", 16)
+
+
 def list_pop_swap(list_, i):
     """Удаление элемента из списка без сохранения порядка."""
     assert i >= 0

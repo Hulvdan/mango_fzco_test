@@ -28,8 +28,8 @@ class User(_Table):
 
     id = Column(Integer, autoincrement=True, primary_key=True)
     name = Column(String(50))
-    email = Column(String(50), unique=True)
-    password = Column(CHAR(60))  # Hash 60 байт
+    email = Column(String(50))
+    password = Column(CHAR(60), nullable=False)  # Hash 60 байт
 
 
 class Chat(_Table):
@@ -86,6 +86,18 @@ class Message(_Table):
     is_read = Column(Boolean, default=False, nullable=False)
 
     __table_args__ = (Index("ix_chat_id", "chat_id"),)
+
+
+# Для предотвращения дублирования сообщений в чате
+# при параллельной отправке запросов.
+# Так мы не храним лишнего в таблице messages.
+# Из этой таблицы мы вычищаем старые значения, чтобы не разрасталась.
+class RecentlySucceededOperation(_Table):
+    __tablename__ = "temp_operations"
+
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, primary_key=True)
+    operation_id = Column(SmallInteger, nullable=False, primary_key=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class Unread(_Table):

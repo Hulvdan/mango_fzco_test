@@ -28,13 +28,26 @@ class WSMessage(BaseModel):
     message: dict
 
 
-# Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же.
+# Каждые 5 минут очищаем таблицу для убирания
+# дублирования одновременно отправляемых сообщений на несколько сервисов.
+async def infinitely_purge_old_message_operations(session):
+    while True:
+        await services.purge_old_message_operations(session)
+        await asyncio.sleep(5 * 60)
+
+
 @asynccontextmanager
 async def app_lifespan(_):
     db.init_engine_and_sessionmaker()
+
+    # Пересоздаю БД при поднятии сервиса. Это бы убрали потом, конечно же.
     await services.fill_db_with_initial_data()
 
-    yield
+    async with asynccontextmanager(db.make_session)() as session:
+        task = asyncio.create_task(infinitely_purge_old_message_operations(session))
+        background_tasks.add(task)
+
+        yield
 
 
 app = FastAPI(lifespan=app_lifespan)

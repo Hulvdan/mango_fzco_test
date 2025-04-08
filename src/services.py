@@ -3,10 +3,19 @@ from datetime import datetime
 from typing import TypeAlias
 
 from passlib.context import CryptContext
-from pydantic import BaseModel
-from sqlalchemy import exists, func, select
+from pydantic import BaseModel, Field
+from sqlalchemy import delete, exists, func, select
 
-from .db import Chat, ChatParticipant, Group, Message, Unread, User
+from . import utils
+from .db import (
+    Chat,
+    ChatParticipant,
+    Group,
+    Message,
+    RecentlySucceededOperation,
+    Unread,
+    User,
+)
 
 UserID: TypeAlias = int
 MessageID: TypeAlias = str | None
@@ -125,10 +134,14 @@ async def make_group(data: MakeGroupData, creator_id: int, session) -> MakeGroup
 class MakeMessageData(BaseModel):
     text: str
 
-    # # Для предотвращения дублирования при параллельной отправке.
-    # # Разом на 3 сервиса можно было бы отправить запрос
-    # # с одним и тем же timestamp от клиента.
-    # timestamp: int
+    # int32 id операции для предотвращения дублирования сообщений.
+    # Пользователь бы, отправляя несколько запросов создания сообщения
+    # разом в несколько сервисов, отправлял бы один и тот же рандомно сгенерированный
+    # operation_id.
+    #
+    # Если бы один сервис уже создал сообщение,
+    # пользователю временно нельзя было бы создать сообщение с этим operation_id.
+    operation_id: int = Field(ge=utils.INT16_MIN, le=utils.INT16_MAX)
 
 
 class MessageData(BaseModel):
@@ -140,9 +153,28 @@ class MessageData(BaseModel):
     is_read: bool
 
 
+class OperationAlreadySucceededError(DomainError):
+    status = 400
+
+
+async def check_not_duplicated(sender_id: int, operation_id: int, session) -> None:
+    st = select(
+        exists()
+        .select_from(RecentlySucceededOperation)
+        .where(
+            RecentlySucceededOperation.user_id == sender_id,
+            RecentlySucceededOperation.operation_id == operation_id,
+        )
+    )
+    if (await session.execute(st)).scalar():
+        raise OperationAlreadySucceededError
+
+
 async def message_user(
     *, data: MakeMessageData, sender_id: int, user_id: int, session
 ) -> MessageData:
+    await check_not_duplicated(sender_id, data.operation_id, session)
+
     # см. Chat.user_ids
     user1 = sender_id
     user2 = data.entity_id
@@ -157,14 +189,21 @@ async def message_user(
     if not existing_chat:
         existing_chat = Chat(type=Chat.TYPE_PERSONAL)
         session.add(existing_chat)
-        session.flush()
+        await session.flush()
 
     message = Message(
         chat_id=existing_chat.id,
         sender_id=sender_id,
         text=data.text,
     )
-    session.flush()
+    session.add(message)
+
+    operation = RecentlySucceededOperation(
+        user_id=sender_id, operation_id=data.operation_id
+    )
+    session.add(operation)
+
+    await session.flush()
 
     session.add(Unread(message_id=message.id, user_id=user_id))
     await session.commit()
@@ -186,6 +225,8 @@ class GroupDoesNotExistError(DomainError):
 async def message_group(
     *, data: MakeMessageData, sender_id: int, group_id: int, session
 ) -> MessageData:
+    await check_not_duplicated(sender_id, data.operation_id, session)
+
     chat_id = (
         await session.execute(select(Group.chat_id).filter(Group.id == group_id))
     ).scalar()
@@ -199,6 +240,11 @@ async def message_group(
         text=data.text,
     )
     session.add(message)
+
+    operation = RecentlySucceededOperation(
+        user_id=sender_id, operation_id=data.operation_id
+    )
+    session.add(operation)
 
     await session.flush()
 
@@ -317,6 +363,13 @@ async def can_access_to_chat(*, chat_id: int, user_id: int, session) -> bool:
             )
         )
     ).scalar()
+
+
+async def purge_old_message_operations(session) -> None:
+    st = delete(RecentlySucceededOperation).where(
+        RecentlySucceededOperation.timestamp < datetime.utcnow()  # noqa: DTZ003
+    )
+    await session.execute(st)
 
 
 async def fill_db_with_initial_data():

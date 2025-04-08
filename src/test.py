@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+from random import randint
 from typing import Callable
 
 import pytest
@@ -8,7 +9,7 @@ from sqlalchemy import NullPool
 from starlette.testclient import WebSocketTestSession
 from starlette.websockets import WebSocketDisconnect
 
-from . import db, main, services
+from . import db, main, services, utils
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -131,7 +132,10 @@ def message_group_as(user_id: int, group_id: int, text: str):
     response = client.post_as(
         user_id,
         f"messages/group/{group_id}",
-        json={"text": text},
+        json={
+            "text": text,
+            "operation_id": randint(utils.INT16_MIN, utils.INT16_MAX),
+        },
     )
     is_ok(response)
     return response.json()
